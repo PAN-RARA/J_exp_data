@@ -7,6 +7,15 @@ Reproduces the Notion 1-1 "全量測試" numbers (誤觸率 / 事件判定達標
 into a sibling folder named "1-1_csv" (i.e. next to this script) before
 running.
 
+Also produces Fig 1-1-1 (per-track achievement rate vs distance, 4
+precisions, individual points overlaid on the per-distance mean to keep the
+individual-variance finding visible). This is 1-1's only chart -- everything
+else stays as tables (false-trigger rate is a one-line text callout, not a
+figure; file-size/speed/accuracy are compact enough as tables per journal
+convention). Fig 1-1-1 is the real-video pilot's distance-degradation
+observation that motivates 1-2 onward's systematic investigation, not a
+restatement of what 1-3/1-5/1-6 show in more depth later.
+
 Each CSV is one (precision, scenario) pair, filename "{precision}_{scenario}.csv":
   precision in {"32","16","8","mix"} = FP32 / FP16 / legacy INT8 / ModelOpt mixed
   scenario  in:
@@ -44,10 +53,16 @@ import re
 from pathlib import Path
 
 import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+matplotlib.rcParams["svg.fonttype"] = "none"
+import matplotlib.pyplot as plt
 
 DATA_DIR = Path(__file__).parent / "1-1_csv"
+CHARTS_DIR = Path(__file__).parent / "charts"
 PRECISION_LABELS = {"32": "FP32", "16": "FP16", "8": "legacy INT8", "mix": "ModelOpt mixed"}
 PRECISION_ORDER = ["32", "16", "8", "mix"]
+PRECISION_COLOR = {"32": "#555555", "16": "#4C72B0", "8": "#C44E52", "mix": "#55A868"}
 REAL_TRACK_FRAME_FRACTION = 0.90
 
 FALSE_TRIGGER_SCENARIOS = ["1s", "2s", "3hd", "3au"]
@@ -103,9 +118,63 @@ def per_track_hit_rate(precision: str, scenario: str) -> list[float]:
     return [df[df["track_id"] == t]["confirmed"].mean() for t in real]
 
 
+def savefig(fig, name):
+    fig.savefig(str(CHARTS_DIR / f"{name}.png"), dpi=130, bbox_inches="tight")
+    fig.savefig(str(CHARTS_DIR / f"{name}.svg"), bbox_inches="tight")
+    plt.close(fig)
+    print(f"saved {CHARTS_DIR / name}.png (+.svg)")
+
+
+def make_distance_degradation_chart():
+    """Fig 1-1-1: per-track event-detection achievement rate vs distance,
+    4 precisions, 1-3 people pooled. Plotted as raw per-track scatter (not
+    mean+/-SD) -- each distance/precision cell has only 1-3 tracks (n_people
+    of that scenario), too few for SD to be a meaningful summary, and the
+    metric itself is a bounded percentage that mostly sits near 100% with
+    occasional individual crashes rather than a symmetric spread, so an
+    errorbar mischaracterizes it (and can even poke past 100%). Showing the
+    individual points directly is the honest representation and keeps the
+    individual-variance finding visible (legacy INT8 at 400cm: one track
+    near 100%, another near 4%). This is the real-video pilot observation
+    that motivates the systematic distance-adaptive investigation carried
+    out in 1-2 onward, not a restatement of it."""
+    CHARTS_DIR.mkdir(exist_ok=True)
+    CHART_DISTANCE_CM = [d for d in DISTANCE_CM if d >= 250]  # 100-200cm is flat/uninteresting, cut it
+    rows = []
+    for scenario in DISTANCE_SCENARIOS:
+        n = scenario_n_people(scenario)
+        d = int(scenario[1:])
+        if d not in CHART_DISTANCE_CM:
+            continue
+        for p in PRECISION_ORDER:
+            for track_idx, r in enumerate(per_track_hit_rate(p, scenario)):
+                rows.append({"distance_cm": d, "n_people": n, "precision": p,
+                             "track_idx": track_idx, "hit_rate": r})
+    df = pd.DataFrame(rows)
+
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    for p in PRECISION_ORDER:
+        sub = df[df["precision"] == p]
+        ax.scatter(sub["distance_cm"], sub["hit_rate"] * 100, color=PRECISION_COLOR[p],
+                   alpha=0.55, s=28, linewidths=0, zorder=3)
+        mean_by_d = sub.groupby("distance_cm")["hit_rate"].mean() * 100
+        ax.plot(mean_by_d.index, mean_by_d.values, color=PRECISION_COLOR[p], marker="o",
+                markersize=5, linewidth=2, label=PRECISION_LABELS[p], zorder=2)
+    ax.set_xlabel("distance (cm)")
+    ax.set_ylabel("achievement rate (%) — individual tracks + mean")
+    ax.set_title("1-1 (real video, 1-3 people pooled): per-track achievement rate vs distance (250-400cm)")
+    ax.set_xticks(CHART_DISTANCE_CM)
+    ax.set_ylim(0, 101)
+    ax.legend(fontsize=9, loc="lower left")
+    fig.tight_layout()
+    savefig(fig, "1-1-1_achievement_rate_vs_distance")
+
+
 def main():
     if not DATA_DIR.is_dir():
         raise SystemExit(f"expected extracted CSVs at {DATA_DIR} -- extract 1-1_csv.7z here first")
+
+    make_distance_degradation_chart()
 
     print("=" * 100)
     print("1. False-trigger rate (1s/2s/3hd/3au) -- frame-level, ANY real track confirmed")
