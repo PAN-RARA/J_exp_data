@@ -7,14 +7,18 @@ Reproduces the Notion 1-1 "全量測試" numbers (誤觸率 / 事件判定達標
 into a sibling folder named "1-1_csv" (i.e. next to this script) before
 running.
 
-Also produces Fig 1-1-1 (per-track achievement rate vs distance, 4
-precisions, individual points overlaid on the per-distance mean to keep the
-individual-variance finding visible). This is 1-1's only chart -- everything
-else stays as tables (false-trigger rate is a one-line text callout, not a
-figure; file-size/speed/accuracy are compact enough as tables per journal
-convention). Fig 1-1-1 is the real-video pilot's distance-degradation
-observation that motivates 1-2 onward's systematic investigation, not a
-restatement of what 1-3/1-5/1-6 show in more depth later.
+Also produces Fig 1-1-1 (R value vs distance, 4 precisions, per-track points
++ within-track errorbar, overlaid on the per-distance mean). This is 1-1's
+only chart -- everything else stays as tables (false-trigger rate is a
+one-line text callout, not a figure; file-size/speed/accuracy are compact
+enough as tables per journal convention). Fig 1-1-1 uses R directly rather
+than the pass/fail achievement rate, since achievement rate's
+CONFIRM_FRAMES smoothing hides R's underlying drift/noise until it finally
+tips over the threshold -- within this pilot's limited 100-400cm range that
+made FP16/ModelOpt mixed look "mostly fine," which undersells why the
+systematic distance-adaptive investigation in 1-2 onward is needed. R is
+also the same metric 1-3 onward standardizes on, so this makes a tighter
+bridge to that section.
 
 Each CSV is one (precision, scenario) pair, filename "{precision}_{scenario}.csv":
   precision in {"32","16","8","mix"} = FP32 / FP16 / legacy INT8 / ModelOpt mixed
@@ -125,21 +129,41 @@ def savefig(fig, name):
     print(f"saved {CHARTS_DIR / name}.png (+.svg)")
 
 
+def per_track_ratio_stats(precision: str, scenario: str) -> list[tuple[float, float]]:
+    """Returns per-real-track (mean_R, std_R) across that track's own frames
+    -- this within-track std is legitimate (repeated measurement of ONE
+    person's held pose, not a population summary), unlike averaging across
+    the few distinct tracks/people themselves."""
+    df = load(precision, scenario)
+    real = real_tracks(df)
+    out = []
+    for t in real:
+        r = df[df["track_id"] == t]["ratio"]
+        out.append((r.mean(), r.std()))
+    return out
+
+
 def make_distance_degradation_chart():
-    """Fig 1-1-1: per-track event-detection achievement rate vs distance,
-    4 precisions, 1-3 people pooled. Plotted as raw per-track scatter (not
-    mean+/-SD) -- each distance/precision cell has only 1-3 tracks (n_people
-    of that scenario), too few for SD to be a meaningful summary, and the
-    metric itself is a bounded percentage that mostly sits near 100% with
-    occasional individual crashes rather than a symmetric spread, so an
-    errorbar mischaracterizes it (and can even poke past 100%). Showing the
-    individual points directly is the honest representation and keeps the
-    individual-variance finding visible (legacy INT8 at 400cm: one track
-    near 100%, another near 4%). This is the real-video pilot observation
-    that motivates the systematic distance-adaptive investigation carried
-    out in 1-2 onward, not a restatement of it."""
+    """Fig 1-1-1: R value (wrist_dist/shoulder_dist) vs distance, 4
+    precisions, 1-3 people pooled, 250-400cm real video.
+
+    Uses R directly instead of the pass/fail achievement rate. Achievement
+    rate is a CONFIRM_FRAMES-smoothed binary outcome -- it absorbs R's
+    underlying drift/noise and only shows a problem once that drift finally
+    tips it over the 0.4 threshold for long enough. Within the real video
+    pilot's limited 100-400cm range, that means FP16/ModelOpt mixed still
+    read as "mostly fine" on achievement rate even though R itself is
+    already visibly drifting and getting noisier under quantization -- R is
+    the earlier, more sensitive signal, and it's also the same metric 1-3
+    onward standardizes on, so this makes a tighter bridge to that section
+    than achievement rate did. Each track's own ~300 correlated frames are
+    first collapsed to that track's mean R (a legitimate within-track
+    summary), and those per-track means are then pooled into one mean +/-
+    SD per distance/precision (settled: no independence concern once
+    collapsed to per-track means -- see discussion) rather than plotted as
+    separate per-track points."""
     CHARTS_DIR.mkdir(exist_ok=True)
-    CHART_DISTANCE_CM = [d for d in DISTANCE_CM if d >= 250]  # 100-200cm is flat/uninteresting, cut it
+    CHART_DISTANCE_CM = [d for d in DISTANCE_CM if d >= 250]
     rows = []
     for scenario in DISTANCE_SCENARIOS:
         n = scenario_n_people(scenario)
@@ -147,27 +171,26 @@ def make_distance_degradation_chart():
         if d not in CHART_DISTANCE_CM:
             continue
         for p in PRECISION_ORDER:
-            for track_idx, r in enumerate(per_track_hit_rate(p, scenario)):
+            for track_idx, (r_mean, r_std) in enumerate(per_track_ratio_stats(p, scenario)):
                 rows.append({"distance_cm": d, "n_people": n, "precision": p,
-                             "track_idx": track_idx, "hit_rate": r})
+                             "track_idx": track_idx, "r_mean": r_mean})
     df = pd.DataFrame(rows)
 
-    fig, ax = plt.subplots(figsize=(9, 4.5))
+    fig, ax = plt.subplots(figsize=(9, 4.8))
     for p in PRECISION_ORDER:
         sub = df[df["precision"] == p]
-        ax.scatter(sub["distance_cm"], sub["hit_rate"] * 100, color=PRECISION_COLOR[p],
-                   alpha=0.55, s=28, linewidths=0, zorder=3)
-        mean_by_d = sub.groupby("distance_cm")["hit_rate"].mean() * 100
-        ax.plot(mean_by_d.index, mean_by_d.values, color=PRECISION_COLOR[p], marker="o",
-                markersize=5, linewidth=2, label=PRECISION_LABELS[p], zorder=2)
+        agg = sub.groupby("distance_cm")["r_mean"].agg(["mean", "std"])
+        agg["std"] = agg["std"].fillna(0)
+        ax.errorbar(agg.index, agg["mean"], yerr=agg["std"], color=PRECISION_COLOR[p],
+                    marker="o", markersize=6, linewidth=2.5, capsize=3, label=PRECISION_LABELS[p])
+    ax.axhline(0.4, color="black", linestyle="--", linewidth=1, alpha=0.6, label="threshold (0.4)")
     ax.set_xlabel("distance (cm)")
-    ax.set_ylabel("achievement rate (%) — individual tracks + mean")
-    ax.set_title("1-1 (real video, 1-3 people pooled): per-track achievement rate vs distance (250-400cm)")
+    ax.set_ylabel("R (wrist_dist / shoulder_dist)")
+    ax.set_title("1-1 (real video, 1-3 people pooled): R value vs distance (250-400cm)")
     ax.set_xticks(CHART_DISTANCE_CM)
-    ax.set_ylim(0, 101)
-    ax.legend(fontsize=9, loc="lower left")
+    ax.legend(fontsize=9, loc="upper left")
     fig.tight_layout()
-    savefig(fig, "1-1-1_achievement_rate_vs_distance")
+    savefig(fig, "1-1-1_r_value_vs_distance")
 
 
 def main():
