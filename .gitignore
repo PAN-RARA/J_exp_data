@@ -1,0 +1,11 @@
+# Extracted scratch CSVs (re-extract from the committed .7z archives before running)
+1-1_csv/
+1-2_csv/
+1-3_csv/
+1-4_csv/
+1-5_csv/
+1-5_fp16_csv/
+1-6_nano_correction_validation_real_video_0/exported_charts/
+
+# ad-hoc debug crops made while reviewing chart output
+**/charts/zoom_*.png
