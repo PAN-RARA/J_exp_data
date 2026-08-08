@@ -170,21 +170,35 @@ def main():
     # ============================================================
     # Fig 1-6-1: original (fixed 0.4) vs new (corrected R + yolo11x threshold)
     # ============================================================
+    # Marker shape now identifies the variant (circle=FP32, triangle=FP16,
+    # square=INT8(mixed)) and stays constant between original/new so the
+    # same-variant pairing is visually obvious; filled=original, hollow
+    # (white face, so the line reads as stopping at the marker) = new.
+    CHART_SHAPE = {"fp32": "o", "fp16": "^", "modelopt_int8_excl_cv4": "s"}
     fig, ax = plt.subplots(figsize=(11, 6.2))
+    handles_for_legend = {}
     for variant in CHART_VARIANTS:
         sub = missrate_df[missrate_df["variant"] == variant].sort_values("distance_cm")
         color = CHART_COLOR[variant]
-        raw_marker, corr_marker = CHART_MARKERS[variant]
-        ax.plot(sub["distance_cm"], sub["miss_fixed"], color=color, linestyle="--", marker=raw_marker, alpha=0.85,
-                label=f"{CHART_LABEL_SHORT[variant]} - original (fixed 0.4, beta_S6.py)")
-        ax.plot(sub["distance_cm"], sub["miss_corrected_adaptive"], color=color, linestyle="-", marker=corr_marker,
-                label=f"{CHART_LABEL_SHORT[variant]} - new (corrected R vs yolo11x threshold)")
+        shape = CHART_SHAPE[variant]
+        h1, = ax.plot(sub["distance_cm"], sub["miss_fixed"], color=color, linestyle="--", marker=shape,
+                markersize=7, linewidth=1.6, label=f"{CHART_LABEL_SHORT[variant]} - original")
+        h2, = ax.plot(sub["distance_cm"], sub["miss_corrected_adaptive"], color=color, linestyle="-", marker=shape,
+                markersize=7, linewidth=1.8, markerfacecolor="white", label=f"{CHART_LABEL_SHORT[variant]} - new")
+        handles_for_legend[(variant, "original")] = h1
+        handles_for_legend[(variant, "new")] = h2
     ax.axvline(400, color="gray", linestyle=":", linewidth=1)
     y_top = ax.get_ylim()[1]
-    ax.text(405, y_top - 0.02 * (y_top - ax.get_ylim()[0]), "real data | simulated ->", fontsize=8, color="gray")
+    ax.text(405, y_top - 0.10 * (y_top - ax.get_ylim()[0]), "real data | simulated ->", fontsize=13, color="gray")
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("miss rate (fraction of person-detections missed)")
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=3, fontsize=8)
+    # 3 rows x 2 cols, each row = one variant's (original, new) pair --
+    # column-major fill with ncol=2 puts the first half of the handle list
+    # in column 1 and the second half in column 2.
+    legend_order = [(v, role) for role in ("original", "new") for v in CHART_VARIANTS]
+    handles = [handles_for_legend[k] for k in legend_order]
+    labels = [f"{CHART_LABEL_SHORT[k[0]]} - {k[1]}" for k in legend_order]
+    ax.legend(handles, labels, loc="upper left", ncol=2, fontsize=10)
     fig.tight_layout()
     savefig(fig, "1-6-1_r_correction_vs_distance_real_and_simulated")
 
