@@ -42,6 +42,9 @@ import matplotlib
 matplotlib.use("Agg")
 matplotlib.rcParams["svg.fonttype"] = "none"
 matplotlib.rcParams["font.family"] = "Times New Roman"
+matplotlib.rcParams["axes.labelsize"] = 13
+matplotlib.rcParams["xtick.labelsize"] = 11
+matplotlib.rcParams["ytick.labelsize"] = 11
 import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
 
@@ -205,7 +208,7 @@ def main():
             # linestyle carries the shoulder/wrist role, marker carries arch
             # identity, fill carries role too (redundant, grayscale-safe).
             ax.plot(xs, shoulder, linestyle="-", marker=ARCH_MARKER[arch], color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – shoulder")
-            ax.plot(xs, wrist, linestyle="--", marker=ARCH_MARKER[arch], color=ARCH_COLOR[arch], markerfacecolor="none", label=f"{ARCH_DISPLAY[arch]} – wrist")
+            ax.plot(xs, wrist, linestyle="--", marker=ARCH_MARKER[arch], color=ARCH_COLOR[arch], markerfacecolor="white", label=f"{ARCH_DISPLAY[arch]} – wrist")
         ax.axvline(divider_x, color="black", linestyle=":", linewidth=1.5)
         ymin, ymax = ax.get_ylim()
         ytext = ymin + 0.30 * (ymax - ymin)

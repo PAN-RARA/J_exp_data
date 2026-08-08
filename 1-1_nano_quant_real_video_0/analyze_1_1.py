@@ -62,6 +62,9 @@ import matplotlib
 matplotlib.use("Agg")
 matplotlib.rcParams["svg.fonttype"] = "none"
 matplotlib.rcParams["font.family"] = "Times New Roman"
+matplotlib.rcParams["axes.labelsize"] = 13
+matplotlib.rcParams["xtick.labelsize"] = 11
+matplotlib.rcParams["ytick.labelsize"] = 11
 import matplotlib.pyplot as plt
 
 DATA_DIR = Path(__file__).parent / "1-1_csv"
@@ -200,7 +203,7 @@ def make_distance_degradation_chart():
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("R (wrist_dist / shoulder_dist)")
     ax.set_xticks(CHART_DISTANCE_CM)
-    ax.legend(fontsize=9, loc="upper left")
+    ax.legend(fontsize=11, loc="upper left")
     fig.tight_layout()
     savefig(fig, "1-1-1_r_value_vs_distance")
 

@@ -47,6 +47,9 @@ import matplotlib
 matplotlib.use("Agg")
 matplotlib.rcParams["svg.fonttype"] = "none"
 matplotlib.rcParams["font.family"] = "Times New Roman"
+matplotlib.rcParams["axes.labelsize"] = 13
+matplotlib.rcParams["xtick.labelsize"] = 11
+matplotlib.rcParams["ytick.labelsize"] = 11
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).parent

@@ -54,6 +54,9 @@ import matplotlib
 matplotlib.use("Agg")
 matplotlib.rcParams["svg.fonttype"] = "none"
 matplotlib.rcParams["font.family"] = "Times New Roman"
+matplotlib.rcParams["axes.labelsize"] = 13
+matplotlib.rcParams["xtick.labelsize"] = 11
+matplotlib.rcParams["ytick.labelsize"] = 11
 import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
 
@@ -246,7 +249,7 @@ def main():
         if start > 0:
             ax.axvline(start - 0.5, color="gray", linestyle=":", linewidth=1)
         ax.text((start + end - 1) / 2, 1.005, name, ha="center", fontsize=10, color="dimgray")
-    ax.legend(fontsize=9, loc="lower right", markerscale=0.65)
+    ax.legend(fontsize=11, loc="lower right", markerscale=0.65)
     fig.tight_layout()
     savefig(fig, "oks_1_3_errbar")
 
@@ -280,13 +283,13 @@ def main():
             ax.plot(d.index, d["shoulder"], color=VARIANT_COLOR[v], linestyle="-", marker=VARIANT_MARKER[v], markersize=5,
                     label=f"{LABELS[v]} – shoulder")
             ax.plot(d.index, d["wrist"], color=VARIANT_COLOR[v], linestyle="--", marker=VARIANT_MARKER[v], markersize=5,
-                    markerfacecolor="none", label=f"{LABELS[v]} – wrist")
+                    markerfacecolor="white", label=f"{LABELS[v]} – wrist")
         ax.set_xlabel(xlabel)
         if xticks:
             ax.set_xticks(xticks)
         ax.set_ylabel("mean OKS vs FP32 (1.0 = identical)")
         ax.set_ylim(0.7, 1.02)
-        ax.legend(fontsize=7.5, loc="center right")
+        ax.legend(fontsize=9.5, loc="center right")
         fig.tight_layout()
         savefig(fig, fname)
 
@@ -392,7 +395,7 @@ def main():
     # only 2 variants here -- role (raw/corrected) already carries marker
     # shape + linestyle, so give the 2nd variant hollow markers as a 3rd,
     # independent grayscale-safe cue on top of color.
-    fill = {"fp16": None, "modelopt_int8_excl_cv4": "none"}
+    fill = {"fp16": None, "modelopt_int8_excl_cv4": "white"}
     fig, ax = plt.subplots(figsize=(10, 6.5))
     for v in ["fp16", "modelopt_int8_excl_cv4"]:
         d = corr_det[v]
@@ -411,7 +414,7 @@ def main():
     # instead of sitting on top of it
     ymin, ymax = ax.get_ylim()
     ax.set_ylim(ymin, ymax + 0.22 * (ymax - ymin))
-    ax.legend(fontsize=9, loc="upper left", labelspacing=0.8, handlelength=2.5, handletextpad=0.8, borderpad=0.8)
+    ax.legend(fontsize=11, loc="upper left", labelspacing=0.8, handlelength=2.5, handletextpad=0.8, borderpad=0.8)
     fig.tight_layout()
     savefig(fig, "1-3-6_R_value_raw_vs_corrected")
 
@@ -425,7 +428,7 @@ def main():
                 markerfacecolor=fill[v], label=f"{LABELS[v]} – corrected R, fixed 0.4")
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("miss rate (fraction of individual person-detections missed)")
-    ax.legend(fontsize=9, loc="upper left", ncol=2, labelspacing=0.8, handlelength=2.5, handletextpad=0.8, borderpad=0.8)
+    ax.legend(fontsize=11, loc="upper left", ncol=2, labelspacing=0.8, handlelength=2.5, handletextpad=0.8, borderpad=0.8)
     fig.tight_layout()
     savefig(fig, "1-3-7_miss_rate_raw_vs_corrected")
 

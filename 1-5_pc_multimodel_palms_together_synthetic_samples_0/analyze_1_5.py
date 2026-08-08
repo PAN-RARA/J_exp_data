@@ -49,6 +49,9 @@ import matplotlib
 matplotlib.use("Agg")
 matplotlib.rcParams["svg.fonttype"] = "none"
 matplotlib.rcParams["font.family"] = "Times New Roman"
+matplotlib.rcParams["axes.labelsize"] = 13
+matplotlib.rcParams["xtick.labelsize"] = 11
+matplotlib.rcParams["ytick.labelsize"] = 11
 import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
 
@@ -241,17 +244,21 @@ def main():
             xs = [i for i, (m, a, t) in enumerate(TIER_MODELS) if a == arch]
             # linestyle carries the shoulder/wrist role, marker carries arch
             # identity, fill carries role too (redundant, grayscale-safe).
-            ax.plot(xs, shoulder, linestyle="-", marker=ARCH_MARKER[arch], color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – shoulder")
-            ax.plot(xs, wrist, linestyle="--", marker=ARCH_MARKER[arch], color=ARCH_COLOR[arch], markerfacecolor="none", label=f"{ARCH_DISPLAY[arch]} – wrist")
+            ax.plot(xs, shoulder, linestyle="-", marker=ARCH_MARKER[arch], markersize=9, color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – shoulder")
+            ax.plot(xs, wrist, linestyle="--", marker=ARCH_MARKER[arch], markersize=9, color=ARCH_COLOR[arch], markerfacecolor="white", label=f"{ARCH_DISPLAY[arch]} – wrist")
         ax.axvline(divider_x, color="black", linestyle=":", linewidth=1.5)
         ymin, ymax = ax.get_ylim()
         ytext = ymin + 0.30 * (ymax - ymin)
-        ax.text(divider_x / 2, ytext, "n/s (Nano-deployable)", ha="center", fontsize=9, style="italic", color="dimgray")
-        ax.text(divider_x + 1 + (11 - divider_x) / 2, ytext, "m/l (reference only)", ha="center", fontsize=9, style="italic", color="dimgray")
+        # "n/s" label sits over x=0.7 (within the v8n/v11n pair) instead of
+        # centered on the n/s block -- the YOLO26 wrist line only exists from
+        # x=2 onward, so this spot stays clear of it without needing a
+        # masking box.
+        ax.text(0.7, ytext, "n/s (Nano-deployable)", ha="center", fontsize=12, style="italic", color="dimgray")
+        ax.text(divider_x + 1 + (11 - divider_x) / 2, ytext, "m/l (reference only)", ha="center", fontsize=12, style="italic", color="dimgray")
         ax.set_xticks(x)
         ax.set_xticklabels(tier_xlabels)
         ax.set_ylabel("mean OKS vs own FP32")
-        ax.legend(fontsize=9, loc="lower right", ncol=2)
+        ax.legend(fontsize=11, loc="lower right", ncol=2, markerscale=1.1, labelspacing=0.7, handlelength=2.2, handletextpad=0.7, borderpad=0.7)
         fig.tight_layout()
         savefig(fig, fname)
 
