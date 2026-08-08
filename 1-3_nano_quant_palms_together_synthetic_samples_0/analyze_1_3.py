@@ -246,7 +246,7 @@ def main():
         if start > 0:
             ax.axvline(start - 0.5, color="gray", linestyle=":", linewidth=1)
         ax.text((start + end - 1) / 2, 1.005, name, ha="center", fontsize=10, color="dimgray")
-    ax.legend(fontsize=9, loc="lower right")
+    ax.legend(fontsize=9, loc="lower right", markerscale=0.65)
     fig.tight_layout()
     savefig(fig, "oks_1_3_errbar")
 
