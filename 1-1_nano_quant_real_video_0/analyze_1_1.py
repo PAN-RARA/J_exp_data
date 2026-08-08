@@ -56,6 +56,7 @@ Two different aggregations, matched to what each scenario type answers:
 import re
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
@@ -181,12 +182,16 @@ def make_distance_degradation_chart():
                              "track_idx": track_idx, "r_mean": r_mean})
     df = pd.DataFrame(rows)
 
+    # small per-precision x-offset so the 4 series' errorbars don't stack on
+    # top of each other at each of the 4 sparse distance ticks (same "dodge"
+    # idea as the Fig 1-3-1 errbar chart, just in x-cm instead of keypoint-index).
+    OFFSET_CM = dict(zip(PRECISION_ORDER, np.linspace(-9, 9, len(PRECISION_ORDER))))
     fig, ax = plt.subplots(figsize=(9, 4.8))
     for p in PRECISION_ORDER:
         sub = df[df["precision"] == p]
         agg = sub.groupby("distance_cm")["r_mean"].agg(["mean", "std"])
         agg["std"] = agg["std"].fillna(0)
-        ax.errorbar(agg.index, agg["mean"], yerr=agg["std"], color=PRECISION_COLOR[p],
+        ax.errorbar(agg.index + OFFSET_CM[p], agg["mean"], yerr=agg["std"], color=PRECISION_COLOR[p],
                     marker=PRECISION_MARKER[p], markersize=6, linewidth=2.5, capsize=3, label=PRECISION_LABELS[p])
     ax.axhline(0.4, color="black", linestyle="--", linewidth=1, alpha=0.6, label="threshold (0.4)")
     ax.set_xlabel("distance (cm)")
