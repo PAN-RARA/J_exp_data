@@ -226,7 +226,7 @@ def main():
     ARCH_DISPLAY = {"v8": "YOLOv8", "v11": "YOLO11", "v26": "YOLO26"}
     TIER_MODELS = [next(mt for mt in MODELS if mt[1] == arch and mt[2] == tier)
                    for tier in TIER_ORDER for arch in ARCH_ORDER]
-    tier_xlabels = [f"{ARCH_DISPLAY[a]}\n{t}" for _, a, t in TIER_MODELS]
+    tier_xlabels = [f"{a}{t}" for _, a, t in TIER_MODELS]
     divider_x = len(ARCH_ORDER) * 2 - 0.5  # between s-block and m-block
 
     # ============================================================

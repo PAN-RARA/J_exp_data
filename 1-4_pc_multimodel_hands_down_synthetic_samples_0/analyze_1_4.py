@@ -189,7 +189,7 @@ def main():
     ARCH_DISPLAY = {"v8": "YOLOv8", "v11": "YOLO11", "v26": "YOLO26"}
     TIER_MODELS = [next(mt for mt in MODELS if mt[1] == arch and mt[2] == tier)
                    for tier in TIER_ORDER for arch in ARCH_ORDER]
-    tier_xlabels = [f"{ARCH_DISPLAY[a]}\n{t}" for _, a, t in TIER_MODELS]
+    tier_xlabels = [f"{a}{t}" for _, a, t in TIER_MODELS]
     divider_x = len(ARCH_ORDER) * 2 - 0.5  # between s-block and m-block
 
     # ============================================================
@@ -207,17 +207,18 @@ def main():
             xs = [i for i, (m, a, t) in enumerate(TIER_MODELS) if a == arch]
             # linestyle carries the shoulder/wrist role, marker carries arch
             # identity, fill carries role too (redundant, grayscale-safe).
-            ax.plot(xs, shoulder, linestyle="-", marker=ARCH_MARKER[arch], color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – shoulder")
-            ax.plot(xs, wrist, linestyle="--", marker=ARCH_MARKER[arch], color=ARCH_COLOR[arch], markerfacecolor="white", label=f"{ARCH_DISPLAY[arch]} – wrist")
+            ax.plot(xs, shoulder, linestyle="-", marker=ARCH_MARKER[arch], markersize=9, color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – shoulder")
+            ax.plot(xs, wrist, linestyle="--", marker=ARCH_MARKER[arch], markersize=9, color=ARCH_COLOR[arch], markerfacecolor="white", label=f"{ARCH_DISPLAY[arch]} – wrist")
         ax.axvline(divider_x, color="black", linestyle=":", linewidth=1.5)
         ymin, ymax = ax.get_ylim()
         ytext = ymin + 0.30 * (ymax - ymin)
-        ax.text(divider_x / 2, ytext, "n/s (Nano-deployable)", ha="center", fontsize=9, style="italic", color="dimgray")
-        ax.text(divider_x + 1 + (11 - divider_x) / 2, ytext, "m/l (reference only)", ha="center", fontsize=9, style="italic", color="dimgray")
+        ytext_low = ymin + 0.06 * (ymax - ymin)
+        ax.text(divider_x - 1.7, ytext_low, "n/s (Nano-deployable)", ha="center", fontsize=12, style="italic", color="dimgray")
+        ax.text(divider_x + 1 + (11 - divider_x) / 2, ytext, "m/l (reference only)", ha="center", fontsize=12, style="italic", color="dimgray")
         ax.set_xticks(x)
         ax.set_xticklabels(tier_xlabels)
         ax.set_ylabel("mean OKS vs own FP32")
-        ax.legend(fontsize=9, loc="lower right", ncol=2)
+        ax.legend(fontsize=11, loc="lower right", ncol=2, markerscale=1.1, labelspacing=0.7, handlelength=2.2, handletextpad=0.7, borderpad=0.7)
         fig.tight_layout()
         savefig(fig, fname)
 
