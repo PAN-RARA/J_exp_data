@@ -286,7 +286,7 @@ def main():
             ax.set_xticks(xticks)
         ax.set_ylabel("mean OKS vs FP32 (1.0 = identical)")
         ax.set_ylim(0.7, 1.02)
-        ax.legend(fontsize=7.5, loc="center left", bbox_to_anchor=(1.0, 0.5))
+        ax.legend(fontsize=7.5, loc="center right")
         fig.tight_layout()
         savefig(fig, fname)
 
