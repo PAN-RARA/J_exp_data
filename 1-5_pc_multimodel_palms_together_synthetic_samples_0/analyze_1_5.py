@@ -316,10 +316,12 @@ def main():
         sems = vals.std(axis=1, ddof=1) / np.sqrt(vals.shape[1])
         ax.errorbar(x + offset, means, yerr=sems, fmt=marker, markersize=6, capsize=3, color=color,
                     label=f"INT8({quant})")
+    ymin, ymax = ax.get_ylim()
+    ytext_group = ymax - 0.05 * (ymax - ymin)
     for name, start, end in GROUP_BOUNDS_17:
         if start > 0:
             ax.axvline(start - 0.5, color="gray", linestyle=":", linewidth=1)
-        ax.text((start + end - 1) / 2, 1.001, name, ha="center", fontsize=10, color="dimgray")
+        ax.text((start + end - 1) / 2, ytext_group, name, ha="center", fontsize=13, color="dimgray")
     ax.set_xticks(x)
     ax.set_xticklabels(KP_ORDER, rotation=45, ha="right")
     ax.set_ylabel("mean OKS across 12 models, ±1 SEM (across models)")
