@@ -415,17 +415,17 @@ def main():
     fig.tight_layout()
     savefig(fig, "1-3-6_R_value_raw_vs_corrected")
 
-    fig, ax = plt.subplots(figsize=(9, 5.5))
+    fig, ax = plt.subplots(figsize=(10, 6.5))
     for v in ["fp16", "modelopt_int8_excl_cv4"]:
         d = corr_det[v]
         agg = d.groupby("distance_cm").agg(miss_raw=("miss_raw", "mean"), miss_corr=("miss_corrected", "mean"))
-        ax.plot(agg.index, agg["miss_raw"], color=VARIANT_COLOR[v], linestyle="--", marker="s", markersize=4,
+        ax.plot(agg.index, agg["miss_raw"], color=VARIANT_COLOR[v], linestyle="--", marker="s", markersize=6,
                 markerfacecolor=fill[v], label=f"{LABELS[v]} – raw R, fixed 0.4")
-        ax.plot(agg.index, agg["miss_corr"], color=VARIANT_COLOR[v], linestyle="-", marker="o", markersize=4,
+        ax.plot(agg.index, agg["miss_corr"], color=VARIANT_COLOR[v], linestyle="-", marker="o", markersize=6,
                 markerfacecolor=fill[v], label=f"{LABELS[v]} – corrected R, fixed 0.4")
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("miss rate (fraction of individual person-detections missed)")
-    ax.legend(fontsize=6.5, loc="upper left", ncol=2)
+    ax.legend(fontsize=9, loc="upper left", ncol=2, labelspacing=0.8, handlelength=2.5, handletextpad=0.8, borderpad=0.8)
     fig.tight_layout()
     savefig(fig, "1-3-7_miss_rate_raw_vs_corrected")
 
