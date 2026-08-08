@@ -431,29 +431,56 @@ def main():
     summary.to_csv(CHARTS_DIR / "r_value_1_5_summary_table.csv", index=False)
     print("\n" + summary.round(4).to_string(index=False))
 
-    MODEL_ORDER = [f"{arch}{size}" for size in TIER_ORDER for arch in ["v8", "v11", "v26"]]
+    # v26 excluded from R-value-related comparisons (same reasoning as Fig
+    # 1-5-6): its cv4-related instability is already established there, so
+    # it doesn't belong in a chart that isn't about that. Dropping it also
+    # cuts 12 model-groups down to 8, letting this fit a single column
+    # instead of needing double-column width.
+    summary = summary[summary["arch"] != "v26"].copy()
+    MODEL_ORDER = [f"{arch}{size}" for size in TIER_ORDER for arch in ["v8", "v11"]]
     summary["order"] = summary.apply(lambda r: MODEL_ORDER.index(f"{r['arch']}{r['tier']}"), axis=1)
+    xlabels8 = [f"{ARCH_LABEL[a]}{t}" for t in TIER_ORDER for a in ["v8", "v11"]]
 
-    # 3 variants x 2 roles (raw/corrected) -- role keeps hollow+dashed (raw)
-    # vs filled+solid (corrected), marker SHAPE now also varies per variant
-    # so all 3 stay distinguishable by shape alone in grayscale.
-    VARIANT_MARKERS = {"fp32": ("o", "^"), "fp16": ("s", "D"), "int8_mixed": ("P", "X")}
-    fig, ax = plt.subplots(figsize=(16, 6.5))
-    x = np.arange(12)
-    for variant in ["fp32", "fp16", "int8_mixed"]:
+    # Grouped bar chart: 6 bars per model (3 variants x raw/corrected).
+    # raw vs corrected: fill (white+hatch = raw/baseline, solid = corrected/
+    # the paper's result). Variant (fp32/fp16/int8_mixed) is color -- but
+    # since position alone isn't obvious to a first-time reader, the first
+    # model group is additionally labeled a-f above its bars, matching the
+    # a-f prefixes in the legend; the reader decodes bar order once from
+    # that group and reads the other 7 by position afterward.
+    fig, ax = plt.subplots(figsize=(9, 6.5))
+    x = np.arange(8)
+    n_bars = 6
+    bar_w = 0.8 / n_bars
+    variants = ["fp32", "fp16", "int8_mixed"]
+    slots = [(v, role) for v in variants for role in ("raw", "corrected")]
+    bar_handles = {}
+    for j, (variant, role) in enumerate(slots):
+        letter = chr(ord("a") + j)
         sub = summary[summary["variant"] == variant].sort_values("order")
         color = VARIANT_COLOR[variant]
-        label = VARIANT_LABEL[variant]
-        raw_marker, corr_marker = VARIANT_MARKERS[variant]
-        ax.plot(x, sub["miss_raw"], color=color, linestyle="--", marker=raw_marker, markerfacecolor="white",
-                 markeredgecolor=color, markersize=7, linewidth=1.3, label=f"{label} – raw R vs threshold")
-        ax.plot(x, sub["miss_corrected"], color=color, linestyle="-", marker=corr_marker, markersize=7,
-                 linewidth=1.6, label=f"{label} – corrected R vs threshold")
-    ax.axvline(5.5, color="gray", linestyle=":", linewidth=1)
+        vals = sub["miss_raw"].values if role == "raw" else sub["miss_corrected"].values
+        offset = (j - (n_bars - 1) / 2) * bar_w
+        label = f"({letter}) {VARIANT_LABEL[variant]} – {role}"
+        if role == "raw":
+            bars = ax.bar(x + offset, vals, width=bar_w, facecolor="white", edgecolor=color,
+                    hatch="///", linewidth=1.0, label=label)
+        else:
+            bars = ax.bar(x + offset, vals, width=bar_w, facecolor=color, edgecolor="black",
+                    linewidth=0.6, label=label)
+        ax.text(x[0] + offset, vals[0] + 0.004, letter, ha="center", fontsize=11)
+        bar_handles[(variant, role)] = (bars, label)
+    ax.axvline(3.5, color="gray", linestyle=":", linewidth=1)
     ax.set_xticks(x)
-    ax.set_xticklabels(tier_xlabels, fontsize=9)
+    ax.set_xticklabels(xlabels8, fontsize=10)
     ax.set_ylabel("miss rate (fraction of person-detections missed)")
-    ax.legend(fontsize=8, loc="upper center", ncol=3, bbox_to_anchor=(0.5, -0.12))
+    # 3 rows x 2 cols, each row = one variant's (raw, corrected) pair --
+    # column-major fill with ncol=2 puts the first half of the handle list
+    # in column 1 and the second half in column 2.
+    legend_order = [(v, role) for role in ("raw", "corrected") for v in variants]
+    handles = [bar_handles[k][0] for k in legend_order]
+    labels = [bar_handles[k][1] for k in legend_order]
+    ax.legend(handles, labels, fontsize=9, loc="upper right", ncol=2)
     fig.tight_layout()
     savefig(fig, "1-5-7_miss_rate_fixed_vs_adaptive")
 
