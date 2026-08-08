@@ -48,8 +48,8 @@ matplotlib.use("Agg")
 matplotlib.rcParams["svg.fonttype"] = "none"
 matplotlib.rcParams["font.family"] = "Times New Roman"
 matplotlib.rcParams["axes.labelsize"] = 13
-matplotlib.rcParams["xtick.labelsize"] = 11
-matplotlib.rcParams["ytick.labelsize"] = 11
+matplotlib.rcParams["xtick.labelsize"] = 13
+matplotlib.rcParams["ytick.labelsize"] = 13
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).parent
@@ -198,7 +198,7 @@ def main():
     legend_order = [(v, role) for role in ("original", "new") for v in CHART_VARIANTS]
     handles = [handles_for_legend[k] for k in legend_order]
     labels = [f"{CHART_LABEL_SHORT[k[0]]} - {k[1]}" for k in legend_order]
-    ax.legend(handles, labels, loc="upper left", ncol=2, fontsize=10)
+    ax.legend(handles, labels, loc="upper left", ncol=2, fontsize=12)
     fig.tight_layout()
     savefig(fig, "1-6-1_r_correction_vs_distance_real_and_simulated")
 
@@ -206,22 +206,35 @@ def main():
     # Fig 1-6-2: raw vs corrected R, vs REAL-video yolo11x target/threshold
     # ============================================================
     fig, ax = plt.subplots(figsize=(11, 6.2))
-    ax.plot(x11_curve["distance_cm"], x11_curve["R_mean"], "k-", linewidth=2, label="yolo11x-pose REAL-video (target)")
-    ax.plot(x11_curve["distance_cm"], x11_curve["threshold"], "k:", linewidth=1.5, label="threshold (yolo11x mean+1.645std)")
+    h_target = ax.plot(x11_curve["distance_cm"], x11_curve["R_mean"], "k-", linewidth=1.3, label="yolo11x - target")[0]
+    h_thresh = ax.plot(x11_curve["distance_cm"], x11_curve["threshold"], "k:", linewidth=1.5, label="yolo11x - threshold")[0]
+    handles_for_legend = {("yolo11x", "target"): (h_target, "yolo11x - target"),
+                          ("yolo11x", "threshold"): (h_thresh, "yolo11x - threshold")}
     for variant in CHART_VARIANTS:
         sub = rvalue_df[rvalue_df["variant"] == variant].sort_values("distance_cm")
         color = CHART_COLOR[variant]
-        raw_marker, corr_marker = CHART_MARKERS[variant]
-        ax.errorbar(sub["distance_cm"], sub["R_raw_mean"], yerr=sub["R_raw_std"], color=color, linestyle="--", marker=raw_marker, alpha=0.85,
-                    capsize=2, label=f"{CHART_LABEL_SHORT[variant]} - raw R")
-        ax.errorbar(sub["distance_cm"], sub["R_corrected_mean"], yerr=sub["R_corrected_std"], color=color, linestyle="-", marker=corr_marker,
-                    capsize=2, label=f"{CHART_LABEL_SHORT[variant]} - corrected R")
+        shape = CHART_SHAPE[variant]
+        label_raw = f"{CHART_LABEL_SHORT[variant]} - raw"
+        label_corr = f"{CHART_LABEL_SHORT[variant]} - corrected"
+        h1 = ax.errorbar(sub["distance_cm"], sub["R_raw_mean"], yerr=sub["R_raw_std"], color=color,
+                    linestyle="--", marker=shape, markersize=7, capsize=2, label=label_raw)
+        h2 = ax.errorbar(sub["distance_cm"], sub["R_corrected_mean"], yerr=sub["R_corrected_std"], color=color,
+                    linestyle="-", marker=shape, markersize=7, markerfacecolor="white", capsize=2, label=label_corr)
+        handles_for_legend[(variant, "raw")] = (h1, label_raw)
+        handles_for_legend[(variant, "corrected")] = (h2, label_corr)
     ax.axvline(400, color="gray", linestyle=":", linewidth=1)
     y_top = ax.get_ylim()[1]
-    ax.text(405, y_top - 0.02 * (y_top - ax.get_ylim()[0]), "real data | simulated ->", fontsize=8, color="gray")
+    ax.text(405, y_top - 0.10 * (y_top - ax.get_ylim()[0]), "real data | simulated ->", fontsize=13, color="gray")
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("R value (wrist_dist / shoulder_dist)")
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=3, fontsize=8)
+    # 4 rows x 2 cols: 3 variant (raw, corrected) pairs, then (target,
+    # threshold) -- column-major fill with ncol=2 puts the first half of
+    # the handle list in column 1 and the second half in column 2.
+    legend_order = ([(v, "raw") for v in CHART_VARIANTS] + [("yolo11x", "target")] +
+                     [(v, "corrected") for v in CHART_VARIANTS] + [("yolo11x", "threshold")])
+    handles = [handles_for_legend[k][0] for k in legend_order]
+    labels = [handles_for_legend[k][1] for k in legend_order]
+    ax.legend(handles, labels, loc="upper left", ncol=2, fontsize=12)
     fig.tight_layout()
     savefig(fig, "1-6-2_R_value_raw_vs_corrected_vs_distance")
 
