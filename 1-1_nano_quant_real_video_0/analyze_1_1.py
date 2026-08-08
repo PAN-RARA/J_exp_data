@@ -60,6 +60,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 matplotlib.rcParams["svg.fonttype"] = "none"
+matplotlib.rcParams["font.family"] = "Times New Roman"
 import matplotlib.pyplot as plt
 
 DATA_DIR = Path(__file__).parent / "1-1_csv"
@@ -67,6 +68,9 @@ CHARTS_DIR = Path(__file__).parent / "charts"
 PRECISION_LABELS = {"32": "FP32", "16": "FP16", "8": "legacy INT8", "mix": "ModelOpt mixed"}
 PRECISION_ORDER = ["32", "16", "8", "mix"]
 PRECISION_COLOR = {"32": "#555555", "16": "#4C72B0", "8": "#C44E52", "mix": "#55A868"}
+# IEEE print figures fall back to grayscale -- pair each precision with its
+# own marker shape so the 4 series stay distinguishable by shape alone.
+PRECISION_MARKER = {"32": "o", "16": "s", "8": "^", "mix": "D"}
 REAL_TRACK_FRAME_FRACTION = 0.90
 
 FALSE_TRIGGER_SCENARIOS = ["1s", "2s", "3hd", "3au"]
@@ -125,8 +129,9 @@ def per_track_hit_rate(precision: str, scenario: str) -> list[float]:
 def savefig(fig, name):
     fig.savefig(str(CHARTS_DIR / f"{name}.png"), dpi=130, bbox_inches="tight")
     fig.savefig(str(CHARTS_DIR / f"{name}.svg"), bbox_inches="tight")
+    fig.savefig(str(CHARTS_DIR / f"{name}.pdf"), bbox_inches="tight")
     plt.close(fig)
-    print(f"saved {CHARTS_DIR / name}.png (+.svg)")
+    print(f"saved {CHARTS_DIR / name}.png (+.svg, +.pdf)")
 
 
 def per_track_ratio_stats(precision: str, scenario: str) -> list[tuple[float, float]]:
@@ -182,11 +187,10 @@ def make_distance_degradation_chart():
         agg = sub.groupby("distance_cm")["r_mean"].agg(["mean", "std"])
         agg["std"] = agg["std"].fillna(0)
         ax.errorbar(agg.index, agg["mean"], yerr=agg["std"], color=PRECISION_COLOR[p],
-                    marker="o", markersize=6, linewidth=2.5, capsize=3, label=PRECISION_LABELS[p])
+                    marker=PRECISION_MARKER[p], markersize=6, linewidth=2.5, capsize=3, label=PRECISION_LABELS[p])
     ax.axhline(0.4, color="black", linestyle="--", linewidth=1, alpha=0.6, label="threshold (0.4)")
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("R (wrist_dist / shoulder_dist)")
-    ax.set_title("1-1 (real video, 1-3 people pooled): R value vs distance (250-400cm)")
     ax.set_xticks(CHART_DISTANCE_CM)
     ax.legend(fontsize=9, loc="upper left")
     fig.tight_layout()

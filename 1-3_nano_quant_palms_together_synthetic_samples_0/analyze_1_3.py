@@ -53,6 +53,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 matplotlib.rcParams["svg.fonttype"] = "none"
+matplotlib.rcParams["font.family"] = "Times New Roman"
 import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
 
@@ -69,6 +70,10 @@ LABELS = {
 }
 VARIANT_COLOR = {"fp16": "#4C72B0", "int8": "#C44E52", "modelopt_int8": "#DD8452",
                   "modelopt_int8_excl_cv4": "#55A868", "modelopt_int8_excl_cv4_fp32": "#8172B2"}
+# IEEE print figures fall back to grayscale -- pair each variant with its own
+# marker shape so series stay distinguishable by shape alone, not just color.
+VARIANT_MARKER = {"fp16": "o", "int8": "s", "modelopt_int8": "^",
+                   "modelopt_int8_excl_cv4": "D", "modelopt_int8_excl_cv4_fp32": "v"}
 PLOT_VARIANTS = ["int8", "modelopt_int8", "modelopt_int8_excl_cv4", "modelopt_int8_excl_cv4_fp32"]  # excludes fp16, matches Fig 1-3-1
 SHOULDER_RATIO_THRESHOLD = 0.80
 K = 1.645  # ~95% one-sided coverage for the adaptive-threshold comparison
@@ -185,8 +190,9 @@ def self_R(df: pd.DataFrame) -> pd.DataFrame:
 def savefig(fig, name):
     fig.savefig(str(CHARTS_DIR / f"{name}.png"), dpi=130, bbox_inches="tight")
     fig.savefig(str(CHARTS_DIR / f"{name}.svg"), bbox_inches="tight")
+    fig.savefig(str(CHARTS_DIR / f"{name}.pdf"), bbox_inches="tight")
     plt.close(fig)
-    print(f"saved {CHARTS_DIR / name}.png (+.svg)")
+    print(f"saved {CHARTS_DIR / name}.png (+.svg, +.pdf)")
 
 
 def main():
@@ -230,11 +236,10 @@ def main():
     fig, ax = plt.subplots(figsize=(14, 5.5))
     for i, v in enumerate(PLOT_VARIANTS):
         ax.errorbar(x + offsets[i], kp_mean[v].values, yerr=kp_sem[v].values,
-                    fmt="o", markersize=6, capsize=3, color=VARIANT_COLOR[v], label=LABELS[v])
+                    fmt=VARIANT_MARKER[v], markersize=6, capsize=3, color=VARIANT_COLOR[v], label=LABELS[v])
     ax.set_xticks(x)
     ax.set_xticklabels(KP_ORDER, rotation=45, ha="right")
     ax.set_ylabel("mean OKS vs FP32 (1.0 = identical), ±1 SEM")
-    ax.set_title("1-3 (palms-together): per-keypoint OKS vs FP32, 4 variants")
     ax.set_ylim(0.6, 1.02)
     ax.axhline(1.0, color="black", linestyle=":", linewidth=1, alpha=0.4)
     for name, start, end in GROUP_BOUNDS:
@@ -270,16 +275,17 @@ def main():
         fig, ax = plt.subplots(figsize=(9, 5.5))
         for v in VARIANTS:
             d = by_x[v]
-            ax.plot(d.index, d["shoulder"], color=VARIANT_COLOR[v], linestyle="-", marker="o", markersize=4,
+            # linestyle carries the shoulder/wrist role, marker carries the
+            # variant identity -- keeps both axes readable in grayscale.
+            ax.plot(d.index, d["shoulder"], color=VARIANT_COLOR[v], linestyle="-", marker=VARIANT_MARKER[v], markersize=5,
                     label=f"{LABELS[v]} – shoulder")
-            ax.plot(d.index, d["wrist"], color=VARIANT_COLOR[v], linestyle="--", marker="s", markersize=4,
-                    label=f"{LABELS[v]} – wrist")
+            ax.plot(d.index, d["wrist"], color=VARIANT_COLOR[v], linestyle="--", marker=VARIANT_MARKER[v], markersize=5,
+                    markerfacecolor="none", label=f"{LABELS[v]} – wrist")
         ax.set_xlabel(xlabel)
         if xticks:
             ax.set_xticks(xticks)
         ax.set_ylabel("mean OKS vs FP32 (1.0 = identical)")
         ax.set_ylim(0.7, 1.02)
-        ax.set_title(f"1-3 (palms-together): shoulder & wrist OKS vs {label}, 5 variants")
         ax.legend(fontsize=7.5, loc="center left", bbox_to_anchor=(1.0, 0.5))
         fig.tight_layout()
         savefig(fig, fname)
@@ -309,7 +315,6 @@ def main():
     ax.axhline(0.5, color="black", linestyle="--", linewidth=1, alpha=0.6)
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("R (wrist_dist / shoulder_dist)")
-    ax.set_title("1-3 (palms-together): R value vs distance, with candidate thresholds 0.4/0.5")
     ax.legend(fontsize=8, loc="upper left")
     fig.tight_layout()
     savefig(fig, "r_vs_distance_thresholds_1_3")
@@ -321,7 +326,6 @@ def main():
     ax.set_xlabel("n_people")
     ax.set_xticks([1, 2, 3, 4, 5])
     ax.set_ylabel("R (wrist_dist / shoulder_dist)")
-    ax.set_title("1-3 (palms-together): R value vs n_people, 5 variants")
     ax.legend(fontsize=8, loc="center left", bbox_to_anchor=(1.0, 0.5))
     fig.tight_layout()
     savefig(fig, "r_vs_npeople_1_3")
@@ -385,21 +389,24 @@ def main():
     print("\n-- miss rate (R corrected vs fixed 0.4) by distance --")
     print(pd.DataFrame({LABELS[v]: corr_det[v].groupby("distance_cm")["miss_corrected"].mean() for v in CORRECTION_VARIANTS}).round(3).to_string())
 
+    # only 2 variants here -- role (raw/corrected) already carries marker
+    # shape + linestyle, so give the 2nd variant hollow markers as a 3rd,
+    # independent grayscale-safe cue on top of color.
+    fill = {"fp16": None, "modelopt_int8_excl_cv4": "none"}
     fig, ax = plt.subplots(figsize=(9, 5.5))
     for v in ["fp16", "modelopt_int8_excl_cv4"]:
         d = corr_det[v]
         agg_raw = d.groupby("distance_cm")["R"].mean()
         agg_corr = d.groupby("distance_cm")["R_corrected"].agg(["mean", "std"])
         ax.plot(agg_raw.index, agg_raw.values, color=VARIANT_COLOR[v], linestyle="--", marker="s", markersize=4,
-                label=f"{LABELS[v]} – raw")
+                markerfacecolor=fill[v], label=f"{LABELS[v]} – raw")
         ax.errorbar(agg_corr.index, agg_corr["mean"], yerr=agg_corr["std"], color=VARIANT_COLOR[v],
-                    linestyle="-", marker="o", markersize=4, capsize=3, label=f"{LABELS[v]} – corrected")
+                    linestyle="-", marker="o", markersize=4, markerfacecolor=fill[v], capsize=3, label=f"{LABELS[v]} – corrected")
     ax.plot(x11_stats["distance_cm"], x11_stats["R_mean"], color="tab:blue", linestyle="-", linewidth=2, alpha=0.5, label="yolo11x-pose FP32 target")
     threshold_curve = x11_stats["R_mean"] + K * x11_stats["R_std"]
     ax.plot(x11_stats["distance_cm"], threshold_curve, color="black", linestyle=":", linewidth=1.5, label=f"threshold (v11x mean+{K}×std)")
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("R (wrist_dist / shoulder_dist)")
-    ax.set_title("1-3 (palms-together): raw vs yolo11x-corrected R value vs distance")
     ax.legend(fontsize=7, loc="upper left")
     fig.tight_layout()
     savefig(fig, "1-3-6_R_value_raw_vs_corrected")
@@ -409,12 +416,11 @@ def main():
         d = corr_det[v]
         agg = d.groupby("distance_cm").agg(miss_raw=("miss_raw", "mean"), miss_corr=("miss_corrected", "mean"))
         ax.plot(agg.index, agg["miss_raw"], color=VARIANT_COLOR[v], linestyle="--", marker="s", markersize=4,
-                label=f"{LABELS[v]} – raw R, fixed 0.4")
+                markerfacecolor=fill[v], label=f"{LABELS[v]} – raw R, fixed 0.4")
         ax.plot(agg.index, agg["miss_corr"], color=VARIANT_COLOR[v], linestyle="-", marker="o", markersize=4,
-                label=f"{LABELS[v]} – corrected R, fixed 0.4")
+                markerfacecolor=fill[v], label=f"{LABELS[v]} – corrected R, fixed 0.4")
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("miss rate (fraction of individual person-detections missed)")
-    ax.set_title("1-3 (palms-together): raw vs corrected miss rate vs distance")
     ax.legend(fontsize=6.5, loc="upper left", ncol=2)
     fig.tight_layout()
     savefig(fig, "1-3-7_miss_rate_raw_vs_corrected")

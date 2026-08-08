@@ -46,6 +46,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 matplotlib.rcParams["svg.fonttype"] = "none"
+matplotlib.rcParams["font.family"] = "Times New Roman"
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).parent
@@ -63,6 +64,9 @@ VARIANTS = ["fp32", "fp16", "int8", "modelopt_int8", "modelopt_int8_excl_cv4", "
 CHART_VARIANTS = ["fp32", "fp16", "modelopt_int8_excl_cv4"]
 CHART_COLOR = {"fp32": "#555555", "fp16": "#e07b39", "modelopt_int8_excl_cv4": "#4a9c6d"}
 CHART_LABEL_SHORT = {"fp32": "FP32", "fp16": "FP16", "modelopt_int8_excl_cv4": "INT8(mixed)"}
+# IEEE print figures fall back to grayscale -- each variant gets its own
+# (raw_marker, corrected_marker) pair so all 3 stay shape-distinguishable.
+CHART_MARKERS = {"fp32": ("o", "^"), "fp16": ("s", "D"), "modelopt_int8_excl_cv4": ("P", "X")}
 
 
 def _dist(df, kp):
@@ -92,8 +96,9 @@ def top_n_filter(df):
 def savefig(fig, name):
     fig.savefig(str(CHARTS_DIR / f"{name}.png"), dpi=130, bbox_inches="tight")
     fig.savefig(str(CHARTS_DIR / f"{name}.svg"), bbox_inches="tight")
+    fig.savefig(str(CHARTS_DIR / f"{name}.pdf"), bbox_inches="tight")
     plt.close(fig)
-    print(f"saved {CHARTS_DIR / name}.png (+.svg)")
+    print(f"saved {CHARTS_DIR / name}.png (+.svg, +.pdf)")
 
 
 def main():
@@ -166,17 +171,16 @@ def main():
     for variant in CHART_VARIANTS:
         sub = missrate_df[missrate_df["variant"] == variant].sort_values("distance_cm")
         color = CHART_COLOR[variant]
-        ax.plot(sub["distance_cm"], sub["miss_fixed"], "o--", color=color, alpha=0.85,
+        raw_marker, corr_marker = CHART_MARKERS[variant]
+        ax.plot(sub["distance_cm"], sub["miss_fixed"], color=color, linestyle="--", marker=raw_marker, alpha=0.85,
                 label=f"{CHART_LABEL_SHORT[variant]} - original (fixed 0.4, beta_S6.py)")
-        ax.plot(sub["distance_cm"], sub["miss_corrected_adaptive"], "^-", color=color,
+        ax.plot(sub["distance_cm"], sub["miss_corrected_adaptive"], color=color, linestyle="-", marker=corr_marker,
                 label=f"{CHART_LABEL_SHORT[variant]} - new (corrected R vs yolo11x threshold)")
     ax.axvline(400, color="gray", linestyle=":", linewidth=1)
     y_top = ax.get_ylim()[1]
     ax.text(405, y_top - 0.02 * (y_top - ax.get_ylim()[0]), "real data | simulated ->", fontsize=8, color="gray")
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("miss rate (fraction of person-detections missed)")
-    ax.set_title("1-6: real human video (250-550cm) - original (fixed 0.4) vs new (1-3/1-5 correction) method\n"
-                  "250-400cm = genuine real footage; 275-550cm = simulated via canvas-preserving downscale from real 250/300/350/400cm frames")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=3, fontsize=8)
     fig.tight_layout()
     savefig(fig, "1-6-1_r_correction_vs_distance_real_and_simulated")
@@ -190,17 +194,16 @@ def main():
     for variant in CHART_VARIANTS:
         sub = rvalue_df[rvalue_df["variant"] == variant].sort_values("distance_cm")
         color = CHART_COLOR[variant]
-        ax.errorbar(sub["distance_cm"], sub["R_raw_mean"], yerr=sub["R_raw_std"], fmt="o--", color=color, alpha=0.85,
+        raw_marker, corr_marker = CHART_MARKERS[variant]
+        ax.errorbar(sub["distance_cm"], sub["R_raw_mean"], yerr=sub["R_raw_std"], color=color, linestyle="--", marker=raw_marker, alpha=0.85,
                     capsize=2, label=f"{CHART_LABEL_SHORT[variant]} - raw R")
-        ax.errorbar(sub["distance_cm"], sub["R_corrected_mean"], yerr=sub["R_corrected_std"], fmt="^-", color=color,
+        ax.errorbar(sub["distance_cm"], sub["R_corrected_mean"], yerr=sub["R_corrected_std"], color=color, linestyle="-", marker=corr_marker,
                     capsize=2, label=f"{CHART_LABEL_SHORT[variant]} - corrected R")
     ax.axvline(400, color="gray", linestyle=":", linewidth=1)
     y_top = ax.get_ylim()[1]
     ax.text(405, y_top - 0.02 * (y_top - ax.get_ylim()[0]), "real data | simulated ->", fontsize=8, color="gray")
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("R value (wrist_dist / shoulder_dist)")
-    ax.set_title("1-6: real human video R value, raw vs corrected, vs yolo11x target/threshold (250-550cm)\n"
-                  "[REAL-video yolo11x target] 250-400cm = genuine real footage; 275-550cm = simulated via canvas-preserving downscale")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=3, fontsize=8)
     fig.tight_layout()
     savefig(fig, "1-6-2_R_value_raw_vs_corrected_vs_distance")

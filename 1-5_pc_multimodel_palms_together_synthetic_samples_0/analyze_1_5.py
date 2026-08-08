@@ -48,6 +48,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 matplotlib.rcParams["svg.fonttype"] = "none"
+matplotlib.rcParams["font.family"] = "Times New Roman"
 import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
 
@@ -63,6 +64,9 @@ MODELS = [
 ]
 TIER_ORDER = ["n", "s", "m", "l"]
 ARCH_COLOR = {"v8": "#4C72B0", "v11": "#DD8452", "v26": "#55A868"}
+# IEEE print figures fall back to grayscale -- pair each architecture with
+# its own marker shape so the 3 series stay distinguishable by shape alone.
+ARCH_MARKER = {"v8": "o", "v11": "s", "v26": "^"}
 QUANT_FILES = {"full": "synth_modelopt_int8_full.csv", "mixed": "synth_modelopt_int8_mixed.csv"}
 SHOULDER_RATIO_THRESHOLD = 0.80
 K = 1.645
@@ -174,8 +178,9 @@ def per_detection_R(fp32_df, variant_df):
 def savefig(fig, name):
     fig.savefig(str(CHARTS_DIR / f"{name}.png"), dpi=130, bbox_inches="tight")
     fig.savefig(str(CHARTS_DIR / f"{name}.svg"), bbox_inches="tight")
+    fig.savefig(str(CHARTS_DIR / f"{name}.pdf"), bbox_inches="tight")
     plt.close(fig)
-    print(f"saved {CHARTS_DIR / name}.png (+.svg)")
+    print(f"saved {CHARTS_DIR / name}.png (+.svg, +.pdf)")
 
 
 def main():
@@ -234,8 +239,10 @@ def main():
             wrist = [kp_mean[(m, quant)][["left_wrist", "right_wrist"]].mean()
                      for m, a, t in TIER_MODELS if a == arch]
             xs = [i for i, (m, a, t) in enumerate(TIER_MODELS) if a == arch]
-            ax.plot(xs, shoulder, "o-", color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – shoulder")
-            ax.plot(xs, wrist, "s--", color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – wrist")
+            # linestyle carries the shoulder/wrist role, marker carries arch
+            # identity, fill carries role too (redundant, grayscale-safe).
+            ax.plot(xs, shoulder, linestyle="-", marker=ARCH_MARKER[arch], color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – shoulder")
+            ax.plot(xs, wrist, linestyle="--", marker=ARCH_MARKER[arch], color=ARCH_COLOR[arch], markerfacecolor="none", label=f"{ARCH_DISPLAY[arch]} – wrist")
         ax.axvline(divider_x, color="black", linestyle=":", linewidth=1.5)
         ymin, ymax = ax.get_ylim()
         ytext = ymin + 0.30 * (ymax - ymin)
@@ -244,7 +251,6 @@ def main():
         ax.set_xticks(x)
         ax.set_xticklabels(tier_xlabels)
         ax.set_ylabel("mean OKS vs own FP32")
-        ax.set_title(f"1-5 (palms-together): shoulder & wrist OKS across 12 models, {QUANT_TITLE[quant]}")
         ax.legend(fontsize=9, loc="lower right", ncol=2)
         fig.tight_layout()
         savefig(fig, fname)
@@ -295,11 +301,11 @@ def main():
     # ============================================================
     fig, ax = plt.subplots(figsize=(16, 5.5))
     x = np.arange(len(KP_ORDER))
-    for quant, color, offset in [("full", "tab:red", -0.1), ("mixed", "tab:green", 0.1)]:
+    for quant, color, marker, offset in [("full", "tab:red", "o", -0.1), ("mixed", "tab:green", "s", 0.1)]:
         vals = np.array([[kp_mean[(m, quant)][kp] for m, _, _ in MODELS] for kp in KP_ORDER])
         means = vals.mean(axis=1)
         sems = vals.std(axis=1, ddof=1) / np.sqrt(vals.shape[1])
-        ax.errorbar(x + offset, means, yerr=sems, fmt="o", markersize=6, capsize=3, color=color,
+        ax.errorbar(x + offset, means, yerr=sems, fmt=marker, markersize=6, capsize=3, color=color,
                     label=f"INT8({quant})")
     for name, start, end in GROUP_BOUNDS_17:
         if start > 0:
@@ -308,7 +314,6 @@ def main():
     ax.set_xticks(x)
     ax.set_xticklabels(KP_ORDER, rotation=45, ha="right")
     ax.set_ylabel("mean OKS across 12 models, ±1 SEM (across models)")
-    ax.set_title("1-5: is the head-keypoint anomaly (1-2 finding) consistent across 12 models?")
     ax.legend(loc="lower right")
     fig.tight_layout()
     savefig(fig, "1-5-5_head_anomaly_crossmodel")
@@ -344,10 +349,11 @@ def main():
                      label=f"{ARCH_DISPLAY[arch]}-{tier}" if deploy else None)
         ax.axhline(0.4, color="black", linestyle=":", linewidth=1, alpha=0.6)
         ax.set_xlabel("distance (cm)")
-        ax.set_title(f"R value vs distance, {QUANT_TITLE2[quant]}")
+        # short per-panel label only -- distinguishes the 2 subplots (full vs
+        # mixed), not a restated chart title (that belongs in the caption).
+        ax.set_title(QUANT_TITLE2[quant], fontsize=10)
         ax.legend(fontsize=8, ncol=2)
     axes[0].set_ylabel("mean R (wrist_dist / shoulder_dist)")
-    fig.suptitle("1-5 (palms-together): R value vs distance across 12 models (n/s solid & bold, m/l faded)")
     fig.tight_layout()
     savefig(fig, "1-5-6_r_vs_distance_crossmodel")
 
@@ -417,22 +423,25 @@ def main():
     MODEL_ORDER = [f"{arch}{size}" for size in TIER_ORDER for arch in ["v8", "v11", "v26"]]
     summary["order"] = summary.apply(lambda r: MODEL_ORDER.index(f"{r['arch']}{r['tier']}"), axis=1)
 
+    # 3 variants x 2 roles (raw/corrected) -- role keeps hollow+dashed (raw)
+    # vs filled+solid (corrected), marker SHAPE now also varies per variant
+    # so all 3 stay distinguishable by shape alone in grayscale.
+    VARIANT_MARKERS = {"fp32": ("o", "^"), "fp16": ("s", "D"), "int8_mixed": ("P", "X")}
     fig, ax = plt.subplots(figsize=(16, 6.5))
     x = np.arange(12)
     for variant in ["fp32", "fp16", "int8_mixed"]:
         sub = summary[summary["variant"] == variant].sort_values("order")
         color = VARIANT_COLOR[variant]
         label = VARIANT_LABEL[variant]
-        ax.plot(x, sub["miss_raw"], color=color, linestyle="--", marker="o", markerfacecolor="white",
+        raw_marker, corr_marker = VARIANT_MARKERS[variant]
+        ax.plot(x, sub["miss_raw"], color=color, linestyle="--", marker=raw_marker, markerfacecolor="white",
                  markeredgecolor=color, markersize=7, linewidth=1.3, label=f"{label} – raw R vs threshold")
-        ax.plot(x, sub["miss_corrected"], color=color, linestyle="-", marker="^", markersize=7,
+        ax.plot(x, sub["miss_corrected"], color=color, linestyle="-", marker=corr_marker, markersize=7,
                  linewidth=1.6, label=f"{label} – corrected R vs threshold")
     ax.axvline(5.5, color="gray", linestyle=":", linewidth=1)
     ax.set_xticks(x)
     ax.set_xticklabels(tier_xlabels, fontsize=9)
     ax.set_ylabel("miss rate (fraction of person-detections missed)")
-    ax.set_title("1-5 (palms-together): does 1-3's full methodology (yolo11x-calibrated threshold + per-variant ratio correction)\n"
-                  "generalize across 12 models? FP32 / FP16 / INT8(mixed), raw vs corrected R vs the yolo11x threshold curve")
     ax.legend(fontsize=8, loc="upper center", ncol=3, bbox_to_anchor=(0.5, -0.12))
     fig.tight_layout()
     savefig(fig, "1-5-7_miss_rate_fixed_vs_adaptive")

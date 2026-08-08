@@ -41,6 +41,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 matplotlib.rcParams["svg.fonttype"] = "none"
+matplotlib.rcParams["font.family"] = "Times New Roman"
 import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
 
@@ -56,6 +57,9 @@ MODELS = [
 ]
 TIER_ORDER = ["n", "s", "m", "l"]
 ARCH_COLOR = {"v8": "#4C72B0", "v11": "#DD8452", "v26": "#55A868"}
+# IEEE print figures fall back to grayscale -- pair each architecture with
+# its own marker shape so the 3 series stay distinguishable by shape alone.
+ARCH_MARKER = {"v8": "o", "v11": "s", "v26": "^"}
 QUANT_FILES = {"full": "synth_modelopt_int8_full.csv", "mixed": "synth_modelopt_int8_mixed.csv"}
 SHOULDER_RATIO_THRESHOLD = 0.80
 
@@ -137,8 +141,9 @@ def per_keypoint_oks(fp32_df: pd.DataFrame, variant_df: pd.DataFrame) -> pd.Data
 def savefig(fig, name):
     fig.savefig(str(CHARTS_DIR / f"{name}.png"), dpi=130, bbox_inches="tight")
     fig.savefig(str(CHARTS_DIR / f"{name}.svg"), bbox_inches="tight")
+    fig.savefig(str(CHARTS_DIR / f"{name}.pdf"), bbox_inches="tight")
     plt.close(fig)
-    print(f"saved {CHARTS_DIR / name}.png (+.svg)")
+    print(f"saved {CHARTS_DIR / name}.png (+.svg, +.pdf)")
 
 
 def main():
@@ -197,8 +202,10 @@ def main():
             wrist = [kp_mean[(m, quant)][["left_wrist", "right_wrist"]].mean()
                      for m, a, t in TIER_MODELS if a == arch]
             xs = [i for i, (m, a, t) in enumerate(TIER_MODELS) if a == arch]
-            ax.plot(xs, shoulder, "o-", color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – shoulder")
-            ax.plot(xs, wrist, "s--", color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – wrist")
+            # linestyle carries the shoulder/wrist role, marker carries arch
+            # identity, fill carries role too (redundant, grayscale-safe).
+            ax.plot(xs, shoulder, linestyle="-", marker=ARCH_MARKER[arch], color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – shoulder")
+            ax.plot(xs, wrist, linestyle="--", marker=ARCH_MARKER[arch], color=ARCH_COLOR[arch], markerfacecolor="none", label=f"{ARCH_DISPLAY[arch]} – wrist")
         ax.axvline(divider_x, color="black", linestyle=":", linewidth=1.5)
         ymin, ymax = ax.get_ylim()
         ytext = ymin + 0.30 * (ymax - ymin)
@@ -207,7 +214,6 @@ def main():
         ax.set_xticks(x)
         ax.set_xticklabels(tier_xlabels)
         ax.set_ylabel("mean OKS vs own FP32")
-        ax.set_title(f"1-4 (hands-down): shoulder & wrist OKS across 12 models, {QUANT_TITLE[quant]}")
         ax.legend(fontsize=9, loc="lower right", ncol=2)
         fig.tight_layout()
         savefig(fig, fname)
