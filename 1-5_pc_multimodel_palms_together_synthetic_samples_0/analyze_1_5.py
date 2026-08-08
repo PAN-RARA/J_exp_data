@@ -342,29 +342,29 @@ def main():
             df = pd.read_csv(model_dir / fname)
             own_curve_full_mixed[(model, quant)] = curve_from_self(df)
 
-    # tier -> (marker, linestyle): n/s bold solid-circle/dashed-square, m/l
-    # the same marker/linestyle pairing but faded (lower alpha, thinner) and
-    # excluded from the legend -- n/s are what's actually deployable on the
-    # Orin Nano, m/l are reference-only.
-    TIER_STYLE = {"n": ("o", "-"), "s": ("s", "--"), "m": ("o", "-"), "l": ("s", "--")}
-    QUANT_TITLE2 = {"full": "INT8(ModelOpt full)", "mixed": "INT8(ModelOpt mixed→excl.cv4)"}
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
-    for ax, quant in zip(axes, ["full", "mixed"]):
-        for model, arch, tier in MODELS:
+    # v26 excluded here: its known cv4-related instability (see Fig 1-5-5)
+    # would read as "v26 has a problem" in a chart that isn't about that --
+    # that story is already told where it belongs. m/l tiers dropped too
+    # (reference-only, not Nano-deployable) to keep this to the 8 series
+    # (2 arch x 2 tier x 2 quant) that are actually the point.
+    TIER_STYLE = {"n": ("o", "-"), "s": ("s", "--")}
+    QUANT_FILL = {"full": True, "mixed": False}
+    fig, ax = plt.subplots(figsize=(9, 6.5))
+    for model, arch, tier in MODELS:
+        if arch == "v26" or tier not in ("n", "s"):
+            continue
+        marker, ls = TIER_STYLE[tier]
+        for quant in ("full", "mixed"):
             c = own_curve_full_mixed[(model, quant)]
-            deploy = tier in ("n", "s")
-            marker, ls = TIER_STYLE[tier]
+            filled = QUANT_FILL[quant]
             ax.plot(c["distance_cm"], c["R_mean"], color=ARCH_COLOR[arch], marker=marker, linestyle=ls,
-                     markersize=6 if deploy else 4, linewidth=2.0 if deploy else 1.0,
-                     alpha=1.0 if deploy else 0.45,
-                     label=f"{ARCH_DISPLAY[arch]}-{tier}" if deploy else None)
-        ax.axhline(0.4, color="black", linestyle=":", linewidth=1, alpha=0.6)
-        ax.set_xlabel("distance (cm)")
-        # short per-panel label only -- distinguishes the 2 subplots (full vs
-        # mixed), not a restated chart title (that belongs in the caption).
-        ax.set_title(QUANT_TITLE2[quant], fontsize=10)
-        ax.legend(fontsize=8, ncol=2)
-    axes[0].set_ylabel("mean R (wrist_dist / shoulder_dist)")
+                     markersize=6, linewidth=2.0,
+                     markerfacecolor=ARCH_COLOR[arch] if filled else "white",
+                     label=f"{ARCH_DISPLAY[arch]}-{tier} ({quant})")
+    ax.axhline(0.4, color="black", linestyle=":", linewidth=1, alpha=0.6)
+    ax.set_xlabel("distance (cm)")
+    ax.set_ylabel("mean R (wrist_dist / shoulder_dist)")
+    ax.legend(fontsize=9, ncol=2)
     fig.tight_layout()
     savefig(fig, "1-5-6_r_vs_distance_crossmodel")
 
