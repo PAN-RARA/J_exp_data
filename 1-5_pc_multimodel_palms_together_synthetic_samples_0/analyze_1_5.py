@@ -249,11 +249,13 @@ def main():
         ax.axvline(divider_x, color="black", linestyle=":", linewidth=1.5)
         ymin, ymax = ax.get_ylim()
         ytext = ymin + 0.30 * (ymax - ymin)
-        # "n/s" label sits over x=0.7 (within the v8n/v11n pair) instead of
-        # centered on the n/s block -- the YOLO26 wrist line only exists from
-        # x=2 onward, so this spot stays clear of it without needing a
-        # masking box.
-        ax.text(0.7, ytext, "n/s (Nano-deployable)", ha="center", fontsize=12, style="italic", color="dimgray")
+        ytext_low = ymin + 0.06 * (ymax - ymin)
+        # "n/s" sits low, near the divider -- clear of data in both panels
+        # (full's only low point is the single YOLO26n anomaly at x=2, long
+        # resolved by x=5; mixed never dips this close to its own ymin).
+        # "m/l" stays at its original higher spot -- moving it down would
+        # run it into the legend box in the bottom-right corner instead.
+        ax.text(divider_x - 1.7, ytext_low, "n/s (Nano-deployable)", ha="center", fontsize=12, style="italic", color="dimgray")
         ax.text(divider_x + 1 + (11 - divider_x) / 2, ytext, "m/l (reference only)", ha="center", fontsize=12, style="italic", color="dimgray")
         ax.set_xticks(x)
         ax.set_xticklabels(tier_xlabels)
