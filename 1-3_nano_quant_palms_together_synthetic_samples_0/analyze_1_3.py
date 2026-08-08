@@ -393,21 +393,25 @@ def main():
     # shape + linestyle, so give the 2nd variant hollow markers as a 3rd,
     # independent grayscale-safe cue on top of color.
     fill = {"fp16": None, "modelopt_int8_excl_cv4": "none"}
-    fig, ax = plt.subplots(figsize=(9, 5.5))
+    fig, ax = plt.subplots(figsize=(10, 6.5))
     for v in ["fp16", "modelopt_int8_excl_cv4"]:
         d = corr_det[v]
         agg_raw = d.groupby("distance_cm")["R"].mean()
         agg_corr = d.groupby("distance_cm")["R_corrected"].agg(["mean", "std"])
-        ax.plot(agg_raw.index, agg_raw.values, color=VARIANT_COLOR[v], linestyle="--", marker="s", markersize=4,
+        ax.plot(agg_raw.index, agg_raw.values, color=VARIANT_COLOR[v], linestyle="--", marker="s", markersize=6,
                 markerfacecolor=fill[v], label=f"{LABELS[v]} – raw")
         ax.errorbar(agg_corr.index, agg_corr["mean"], yerr=agg_corr["std"], color=VARIANT_COLOR[v],
-                    linestyle="-", marker="o", markersize=4, markerfacecolor=fill[v], capsize=3, label=f"{LABELS[v]} – corrected")
+                    linestyle="-", marker="o", markersize=6, markerfacecolor=fill[v], capsize=3, label=f"{LABELS[v]} – corrected")
     ax.plot(x11_stats["distance_cm"], x11_stats["R_mean"], color="tab:blue", linestyle="-", linewidth=2, alpha=0.5, label="yolo11x-pose FP32 target")
     threshold_curve = x11_stats["R_mean"] + K * x11_stats["R_std"]
     ax.plot(x11_stats["distance_cm"], threshold_curve, color="black", linestyle=":", linewidth=1.5, label=f"threshold (v11x mean+{K}×std)")
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("R (wrist_dist / shoulder_dist)")
-    ax.legend(fontsize=7, loc="upper left")
+    # extra headroom above the threshold curve so the legend has clear space
+    # instead of sitting on top of it
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax + 0.22 * (ymax - ymin))
+    ax.legend(fontsize=9, loc="upper left", labelspacing=0.8, handlelength=2.5, handletextpad=0.8, borderpad=0.8)
     fig.tight_layout()
     savefig(fig, "1-3-6_R_value_raw_vs_corrected")
 
