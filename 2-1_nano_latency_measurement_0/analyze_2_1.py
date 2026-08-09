@@ -2,13 +2,17 @@
 """
 analyze_2_1.py
 ===============
-Reproduces the Notion 2-1 latency measurement chart (Fig 2-1) from the
-27-scenario combined summary CSV (3 precisions x 3 people-counts x 3 power
-modes, produced by beta_S6_latency_harness.py). This script only uses the
-MAXN_SUPER power mode (full performance, the deployed setting) -- the 15W/25W
-scenarios are in the same CSV but not plotted here.
+Reproduces Fig 2-1 (latency pipeline stage breakdown, Notion Experiment 2)
+from the 27-scenario combined summary CSV (3 precisions x 3 people-counts x
+3 power modes, produced by beta_S6_latency_harness.py -- bundled here as
+beta_S6_latency_harness.py / 2_1_integrity_check.py for reference).
 
-Source: C:/Users/user/pose_quant_env/exported_charts/2-1/2_1_all_27_scenarios_combined.csv
+Extract 2-1_csv.7z here first -- it unpacks to "2-1_csv/", containing the
+27 raw per-scenario result folders (summary.jsonl, tegrastats.log, 9
+per-frame CSVs each) plus 2_1_all_27_scenarios_combined.csv, the pre-parsed
+summary this script actually reads. This chart only uses n_people=1 (fixed)
+across the 3 precisions x 3 power modes -- the people-count scaling,
+per-frame, and tegrastats/thermal angles in the raw data aren't plotted here.
 """
 from pathlib import Path
 
@@ -22,7 +26,8 @@ matplotlib.rcParams["xtick.labelsize"] = 13
 matplotlib.rcParams["ytick.labelsize"] = 13
 import matplotlib.pyplot as plt
 
-SRC_CSV = Path(r"C:\Users\user\pose_quant_env\exported_charts\2-1\2_1_all_27_scenarios_combined.csv")
+DATA_DIR = Path(__file__).parent / "2-1_csv"
+SRC_CSV = DATA_DIR / "2_1_all_27_scenarios_combined.csv"
 CHARTS_DIR = Path(__file__).parent / "charts"
 
 ENGINE_ORDER = ["fp32", "fp16", "modelopt_int8_excl_cv4"]
@@ -48,6 +53,8 @@ POWER_MODE_ORDER = ["MAXN_SUPER", "25W", "15W"]
 
 
 def main():
+    if not SRC_CSV.exists():
+        raise SystemExit(f"expected {SRC_CSV} -- extract 2-1_csv.7z here first")
     CHARTS_DIR.mkdir(exist_ok=True)
     df = pd.read_csv(SRC_CSV)
     df = df[df["n_people"] == 1].copy()
