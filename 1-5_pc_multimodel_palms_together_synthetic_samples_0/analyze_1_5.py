@@ -72,7 +72,11 @@ ARCH_COLOR = {"v8": "#4C72B0", "v11": "#DD8452", "v26": "#55A868"}
 ARCH_MARKER = {"v8": "o", "v11": "s", "v26": "^"}
 QUANT_FILES = {"full": "synth_modelopt_int8_full.csv", "mixed": "synth_modelopt_int8_mixed.csv"}
 SHOULDER_RATIO_THRESHOLD = 0.80
-K = 1.645
+# Empirical 95th-percentile threshold, not mean+1.645*std -- see analyze_1_3.py's
+# ADAPTIVE_PCTL comment: Shapiro-Wilk rejects normality for yolo11x-pose's own
+# R distribution at every distance bin, and the parametric formula under-
+# estimates the true 95th percentile (systematically too strict).
+ADAPTIVE_PCTL = 95
 
 COCO_SIGMA = {
     "nose": 0.026, "left_eye": 0.025, "right_eye": 0.025,
@@ -159,7 +163,9 @@ def r_self(df):
 
 def curve_from_self(df):
     r = r_self(df)
-    return r.groupby("distance_cm").agg(R_mean=("R", "mean"), R_std=("R", "std")).reset_index()
+    return r.groupby("distance_cm").agg(
+        R_mean=("R", "mean"), R_std=("R", "std"), R_p95=("R", lambda s: s.quantile(ADAPTIVE_PCTL / 100))
+    ).reset_index()
 
 
 def per_detection_R(fp32_df, variant_df):
@@ -235,7 +241,11 @@ def main():
     QUANT_TITLE = {"full": "INT8(ModelOpt full)", "mixed": "INT8(ModelOpt mixed→excl.cv4)"}
     for quant, fname in [("full", "1-5-1_hero_full"), ("mixed", "1-5-2_hero_mixed")]:
         x = np.arange(12)
-        fig, ax = plt.subplots(figsize=(13, 5.5))
+        fig, ax = plt.subplots(figsize=(13, 6.2))
+        # Embeds at 3.4in single-column width; fonts are back-calculated so
+        # they land at the intended final size once LaTeX shrinks it down
+        # (see Fig 5's _SHRINK5 in analyze_1_3.py for the same pattern).
+        _SHRINK8 = 3.4 / 12.687
         for arch in ARCH_ORDER:
             shoulder = [kp_mean[(m, quant)][["left_shoulder", "right_shoulder"]].mean()
                         for m, a, t in TIER_MODELS if a == arch]
@@ -244,23 +254,32 @@ def main():
             xs = [i for i, (m, a, t) in enumerate(TIER_MODELS) if a == arch]
             # linestyle carries the shoulder/wrist role, marker carries arch
             # identity, fill carries role too (redundant, grayscale-safe).
-            ax.plot(xs, shoulder, linestyle="-", marker=ARCH_MARKER[arch], markersize=9, color=ARCH_COLOR[arch], label=f"{ARCH_DISPLAY[arch]} – shoulder")
-            ax.plot(xs, wrist, linestyle="--", marker=ARCH_MARKER[arch], markersize=9, color=ARCH_COLOR[arch], markerfacecolor="white", label=f"{ARCH_DISPLAY[arch]} – wrist")
+            ax.plot(xs, shoulder, linestyle="-", marker=ARCH_MARKER[arch], markersize=16, linewidth=2.2, color=ARCH_COLOR[arch], label=f"{arch}, sh")
+            ax.plot(xs, wrist, linestyle="--", marker=ARCH_MARKER[arch], markersize=16, linewidth=2.2, color=ARCH_COLOR[arch], markerfacecolor="white", label=f"{arch}, wr")
         ax.axvline(divider_x, color="black", linestyle=":", linewidth=1.5)
-        ymin, ymax = ax.get_ylim()
-        ytext = ymin + 0.30 * (ymax - ymin)
-        ytext_low = ymin + 0.06 * (ymax - ymin)
-        # "n/s" sits low, near the divider -- clear of data in both panels
-        # (full's only low point is the single YOLO26n anomaly at x=2, long
-        # resolved by x=5; mixed never dips this close to its own ymin).
-        # "m/l" stays at its original higher spot -- moving it down would
-        # run it into the legend box in the bottom-right corner instead.
-        ax.text(divider_x - 1.7, ytext_low, "n/s (Nano-deployable)", ha="center", fontsize=12, style="italic", color="dimgray")
-        ax.text(divider_x + 1 + (11 - divider_x) / 2, ytext, "m/l (reference only)", ha="center", fontsize=12, style="italic", color="dimgray")
+        # Widened from the auto-fit range (~0.955-1.00) so there's real empty
+        # space at the bottom for the legend to sit inside at "lower right"
+        # without touching data -- the right-side models (v8l/v11l/v26l)
+        # never dip below ~0.98, so the bottom of a taller frame stays clear.
+        ax.set_ylim(0.94, 1.01)
+        # n/s vs m/l tier grouping is explained in the caption instead of
+        # in-plot text now (was "n/s (Nano-deployable)" / "m/l (reference
+        # only)" italic labels near the divider).
         ax.set_xticks(x)
-        ax.set_xticklabels(tier_xlabels)
-        ax.set_ylabel("mean OKS vs own FP32")
-        ax.legend(fontsize=11, loc="lower right", ncol=2, markerscale=1.1, labelspacing=0.7, handlelength=2.2, handletextpad=0.7, borderpad=0.7)
+        # 7pt (not 8pt) final -- at 8pt, "v11m"/"v26m" (adjacent tiers, both
+        # ending/starting with the wide "m"/"v" glyphs) touched with no gap.
+        ax.set_xticklabels(tier_xlabels, fontsize=7 / _SHRINK8)
+        ax.set_ylabel("mean OKS vs own FP32", fontsize=9 / _SHRINK8)
+        ax.tick_params(axis="y", labelsize=8 / _SHRINK8)
+        # Legend back inside at "lower right": the widened y-axis above opens
+        # up genuine empty space there now, instead of needing to push the
+        # legend outside the axes as before.
+        handles, labels = ax.get_legend_handles_labels()
+        order = list(range(0, len(handles), 2)) + list(range(1, len(handles), 2))
+        handles = [handles[i] for i in order]
+        labels = [labels[i] for i in order]
+        ax.legend(handles, labels, fontsize=6 / _SHRINK8, loc="lower right", ncol=2,
+                  markerscale=1.1, labelspacing=0.7, handlelength=2.2, handletextpad=0.7, borderpad=0.7)
         fig.tight_layout()
         savefig(fig, fname)
 
@@ -349,6 +368,10 @@ def main():
     # (2 arch x 2 tier x 2 quant) that are actually the point.
     TIER_STYLE = {"n": ("o", "-"), "s": ("s", "--")}
     QUANT_FILL = {"full": True, "mixed": False}
+    # 2026-08-13: content/layout unchanged per user instruction -- only
+    # back-calculated font sizes added. Fig 1-5-6/1-5-7 both embed at
+    # 3.4in against a native ~8.88in canvas (shrink 3.4/8.88=0.383).
+    _SHRINK1256 = 3.4 / 8.88
     fig, ax = plt.subplots(figsize=(9, 6.5))
     for model, arch, tier in MODELS:
         if arch == "v26" or tier not in ("n", "s"):
@@ -358,13 +381,17 @@ def main():
             c = own_curve_full_mixed[(model, quant)]
             filled = QUANT_FILL[quant]
             ax.plot(c["distance_cm"], c["R_mean"], color=ARCH_COLOR[arch], marker=marker, linestyle=ls,
-                     markersize=6, linewidth=2.0,
+                     markersize=12, linewidth=2.0,
                      markerfacecolor=ARCH_COLOR[arch] if filled else "white",
                      label=f"{ARCH_DISPLAY[arch]}-{tier} ({quant})")
     ax.axhline(0.4, color="black", linestyle=":", linewidth=1, alpha=0.6)
-    ax.set_xlabel("distance (cm)")
-    ax.set_ylabel("mean R (wrist_dist / shoulder_dist)")
-    ax.legend(fontsize=9, ncol=2)
+    ax.set_xlabel("distance (cm)", fontsize=9 / _SHRINK1256)
+    ax.set_ylabel("mean R (wrist_dist / shoulder_dist)", fontsize=9 / _SHRINK1256)
+    ax.tick_params(axis="both", labelsize=8 / _SHRINK1256)
+    # 2026-08-13: legend moved outside (below) the axes -- at the
+    # back-calculated font size the default ("best") placement started
+    # overlapping data curves that dip into the lower-left corner.
+    ax.legend(fontsize=7 / _SHRINK1256, loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2)
     fig.tight_layout()
     savefig(fig, "1-5-6_r_vs_distance_crossmodel")
 
@@ -385,7 +412,7 @@ def main():
     print("3. Full correction methodology across 12 models (Fig 1-5-7)")
     print("=" * 100)
     yolo11x_curve = curve_from_self(pd.read_csv(YOLO11X_FP32_CSV))
-    yolo11x_curve["threshold"] = yolo11x_curve["R_mean"] + K * yolo11x_curve["R_std"]
+    yolo11x_curve["threshold"] = yolo11x_curve["R_p95"]
     x11_mean = dict(zip(yolo11x_curve["distance_cm"], yolo11x_curve["R_mean"]))
     x11_std = dict(zip(yolo11x_curve["distance_cm"], yolo11x_curve["R_std"]))
     x11_thr = dict(zip(yolo11x_curve["distance_cm"], yolo11x_curve["threshold"]))

@@ -71,15 +71,31 @@ LABELS = {
     "modelopt_int8_excl_cv4": "INT8(ModelOpt mixed→FP16)",
     "modelopt_int8_excl_cv4_fp32": "INT8(ModelOpt mixed→FP32)",
 }
+# Shortened variant names for legends too dense for the full LABELS text
+# (e.g. Fig 1-3-2/3's 5-variant x shoulder/wrist = 10-entry legend).
+LABELS_SHORT = {
+    "fp16": "FP16", "int8": "INT8-legacy", "modelopt_int8": "INT8-full",
+    "modelopt_int8_excl_cv4": "INT8-mix16",
+    "modelopt_int8_excl_cv4_fp32": "INT8-mix32",
+}
 VARIANT_COLOR = {"fp16": "#4C72B0", "int8": "#C44E52", "modelopt_int8": "#DD8452",
                   "modelopt_int8_excl_cv4": "#55A868", "modelopt_int8_excl_cv4_fp32": "#8172B2"}
 # IEEE print figures fall back to grayscale -- pair each variant with its own
 # marker shape so series stay distinguishable by shape alone, not just color.
 VARIANT_MARKER = {"fp16": "o", "int8": "s", "modelopt_int8": "^",
                    "modelopt_int8_excl_cv4": "D", "modelopt_int8_excl_cv4_fp32": "v"}
-PLOT_VARIANTS = ["int8", "modelopt_int8", "modelopt_int8_excl_cv4", "modelopt_int8_excl_cv4_fp32"]  # excludes fp16, matches Fig 1-3-1
+PLOT_VARIANTS = ["int8", "modelopt_int8", "modelopt_int8_excl_cv4", "modelopt_int8_excl_cv4_fp32", "fp16"]  # all 5 precision variants, Fig 1-3-1 heatmap; fp16 last as the near-lossless anchor
 SHOULDER_RATIO_THRESHOLD = 0.80
-K = 1.645  # ~95% one-sided coverage for the adaptive-threshold comparison
+# Adaptive threshold = empirical 95th percentile of the reference distribution
+# per distance bin, NOT mean+1.645*std -- Shapiro-Wilk rejects normality at
+# every distance bin for yolo11x-pose's own R distribution (p < 1e-22
+# throughout, consistent right skew 0.4-1.2), and the parametric mean+K*std
+# formula was found to systematically UNDER-shoot the true 95th percentile
+# (by 0.015-0.058 in R units across bins), giving an actual empirical
+# exceedance rate of 8.9-15.3% on yolo11x's own clean data instead of the
+# intended ~5% -- i.e. the threshold was too strict by roughly 2-3x. The
+# empirical-percentile version makes no distributional assumption.
+ADAPTIVE_PCTL = 95
 
 COCO_SIGMA = {
     "nose": 0.026, "left_eye": 0.025, "right_eye": 0.025,
@@ -234,22 +250,71 @@ def main():
         for kp in KP_ORDER:
             print(f"  {kp:<16} {kp_mean[v][kp]:.4f}")
 
-    x = np.arange(len(KP_ORDER))
-    offsets = np.linspace(-0.24, 0.24, len(PLOT_VARIANTS))
-    fig, ax = plt.subplots(figsize=(14, 5.5))
-    for i, v in enumerate(PLOT_VARIANTS):
-        ax.errorbar(x + offsets[i], kp_mean[v].values, yerr=kp_sem[v].values,
-                    fmt=VARIANT_MARKER[v], markersize=6, capsize=3, color=VARIANT_COLOR[v], label=LABELS[v])
-    ax.set_xticks(x)
-    ax.set_xticklabels(KP_ORDER, rotation=45, ha="right")
-    ax.set_ylabel("mean OKS vs FP32 (1.0 = identical), ±1 SEM")
-    ax.set_ylim(0.6, 1.02)
-    ax.axhline(1.0, color="black", linestyle=":", linewidth=1, alpha=0.4)
+    # 2026-08-14: heatmap (17 keypoints x 5 precision variants), tall
+    # orientation. A wide transpose (keypoints along x) was tried but doesn't
+    # fit: 17 rotated keypoint labels need more headroom than 5 data rows
+    # provide, so the grid, gridlines, and colorbar all compress and overlap.
+    data = np.array([[kp_mean[v][kp] for v in PLOT_VARIANTS] for kp in KP_ORDER])
+    # Line-wrapped, not rotated: a 2-line horizontal label ("INT8"/"legacy")
+    # needs only its own line-height, while a slanted single-line label needs
+    # diagonal clearance for the full string length -- the wrapped version
+    # trims the top lane further without losing rotation and re-reading it.
+    variant_labels = [LABELS_SHORT[v].replace("-", "\n") for v in PLOT_VARIANTS]
+
+    fig, ax = plt.subplots(figsize=(5.6, 5.1))
+    # viridis: perceptually uniform and monotonic in luminance, so the
+    # encoding still reads correctly when IEEE print falls back to grayscale.
+    im = ax.imshow(data, cmap="viridis", vmin=0.7, vmax=1.0, aspect="auto")
+
+    # Embeds at 3.4in single-column width; fonts are back-calculated so they
+    # land at the intended final size once LaTeX shrinks it down (see Fig 5's
+    # original _SHRINK5 note in this file for the same pattern). Native
+    # rendered width measured at 5.493in via pdfinfo after bbox_inches="tight"
+    # trimming (figsize width was 5.6in before trim).
+    _SHRINK5 = 3.4 / 5.493
+
+    ax.set_xticks(range(len(PLOT_VARIANTS)))
+    ax.set_xticklabels(variant_labels, fontsize=7 / _SHRINK5, rotation=0, ha="center", va="bottom")
+    ax.xaxis.set_ticks_position("top")
+    ax.tick_params(axis="x", length=0, pad=1)
+
+    ax.set_yticks(range(len(KP_ORDER)))
+    ax.set_yticklabels(KP_ORDER, fontsize=8 / _SHRINK5)
+    ax.tick_params(axis="y", length=0)
+
+    # thin white gridlines between cells
+    ax.set_xticks(np.arange(-0.5, len(PLOT_VARIANTS), 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(KP_ORDER), 1), minor=True)
+    ax.grid(which="minor", color="white", linewidth=0.8)
+    ax.tick_params(which="minor", length=0)
+
+    norm = im.norm
+    for i, kp in enumerate(KP_ORDER):
+        for j, v in enumerate(PLOT_VARIANTS):
+            val = kp_mean[v][kp]
+            text_color = "white" if norm(val) < 0.6 else "black"
+            # 3 decimals, not 2: FP16 and the mixed-precision variants cluster
+            # in 0.96-1.00, where 2-decimal rounding flattens genuine spread
+            # (e.g. 0.9985 vs 0.9998) into a suspicious wall of "1.00"s.
+            ax.text(j, i, f"{val:.3f}", ha="center", va="center",
+                    fontsize=6.3 / _SHRINK5, color=text_color)
+
     for name, start, end in GROUP_BOUNDS:
         if start > 0:
-            ax.axvline(start - 0.5, color="gray", linestyle=":", linewidth=1)
-        ax.text((start + end - 1) / 2, 1.005, name, ha="center", fontsize=10, color="dimgray")
-    ax.legend(fontsize=11, loc="lower right", markerscale=0.65)
+            ax.axhline(start - 0.5, color="white", linewidth=1.5)
+        ax.text(len(PLOT_VARIANTS) - 0.5 + 0.15, (start + end - 1) / 2, name,
+                 ha="center", va="center", rotation=90, fontsize=7 / _SHRINK5, color="dimgray")
+
+    # Vertical, not horizontal: a horizontal bar spends height, which is the
+    # dimension being squeezed. Final width is rescaled to a fixed 3.4in
+    # regardless of native aspect ratio, so trading width for height here is
+    # free. pad is tight now that the group-name lane is rotated (narrow) --
+    # an earlier wider pad (sized for the un-rotated horizontal labels) left
+    # a visible blank gap once the labels became vertical.
+    cbar = fig.colorbar(im, ax=ax, orientation="vertical", pad=0.14, fraction=0.05, aspect=30)
+    cbar.set_label("mean OKS vs FP32 (1.0 = identical)", fontsize=8 / _SHRINK5)
+    cbar.ax.tick_params(labelsize=7 / _SHRINK5)
+
     fig.tight_layout()
     savefig(fig, "oks_1_3_errbar")
 
@@ -275,21 +340,44 @@ def main():
         ("distance", by_distance, "distance (cm)", "oks_1_3_shoulder_wrist_vs_distance", None),
         ("n_people", by_npeople, "n_people", "oks_1_3_shoulder_wrist_vs_npeople", [1, 2, 3, 4, 5]),
     ]:
-        fig, ax = plt.subplots(figsize=(9, 5.5))
+        fig, ax = plt.subplots(figsize=(9, 5))
+        # Embeds at 3.4in single-column width; fonts are back-calculated so
+        # they land at the intended final size once LaTeX shrinks it down
+        # (see Fig 5's _SHRINK5 in this file). _TARGET6 is the final-pt
+        # reference: "other" text (axis labels/ticks) renders at 0.85x that,
+        # the legend at 0.7x, since the legend is the most crowded element
+        # here (5 variants x shoulder/wrist = 10 entries).
+        _SHRINK6 = 3.4 / 8.888
+        _TARGET6 = 9
         for v in VARIANTS:
             d = by_x[v]
             # linestyle carries the shoulder/wrist role, marker carries the
             # variant identity -- keeps both axes readable in grayscale.
-            ax.plot(d.index, d["shoulder"], color=VARIANT_COLOR[v], linestyle="-", marker=VARIANT_MARKER[v], markersize=5,
-                    label=f"{LABELS[v]} – shoulder")
-            ax.plot(d.index, d["wrist"], color=VARIANT_COLOR[v], linestyle="--", marker=VARIANT_MARKER[v], markersize=5,
-                    markerfacecolor="white", label=f"{LABELS[v]} – wrist")
-        ax.set_xlabel(xlabel)
+            ax.plot(d.index, d["shoulder"], color=VARIANT_COLOR[v], linestyle="-", marker=VARIANT_MARKER[v], markersize=10,
+                    label=f"{LABELS_SHORT[v]}, sh")
+            ax.plot(d.index, d["wrist"], color=VARIANT_COLOR[v], linestyle="--", marker=VARIANT_MARKER[v], markersize=10,
+                    markerfacecolor="white", label=f"{LABELS_SHORT[v]}, wr")
+        ax.set_xlabel(xlabel, fontsize=0.85 * _TARGET6 / _SHRINK6)
         if xticks:
             ax.set_xticks(xticks)
-        ax.set_ylabel("mean OKS vs FP32 (1.0 = identical)")
+        ax.set_ylabel("mean OKS vs FP32 (1.0 = identical)", fontsize=0.85 * _TARGET6 / _SHRINK6)
+        ax.tick_params(labelsize=0.85 * _TARGET6 / _SHRINK6)
         ax.set_ylim(0.7, 1.02)
-        ax.legend(fontsize=9.5, loc="center right")
+        # Back inside the axes: the isolated INT8-legacy wrist curve
+        # (~0.73-0.82) leaves a data-free gap around 0.83-0.90, roughly the
+        # vertical center of the 0.7-1.02 axes. That gap is a fixed fraction
+        # of the axes height regardless of figsize, so the earlier
+        # 5-row x 2-col legend didn't overlap data because it was too wide
+        # for the gap -- it was too tall for the gap's absolute size at the
+        # original figsize=(9, 5.5). Taller axes (7.5in vs 5.5in) gives that
+        # same fraction more physical room, so try the 5x2 block centered in
+        # the gap directly instead of pushing it below the x-axis label.
+        handles, labels = ax.get_legend_handles_labels()
+        order = list(range(0, len(handles), 2)) + list(range(1, len(handles), 2))
+        handles = [handles[i] for i in order]
+        labels = [labels[i] for i in order]
+        ax.legend(handles, labels, fontsize=0.7 * _TARGET6 / _SHRINK6, loc="center",
+                  bbox_to_anchor=(0.5, 0.47), ncol=2)
         fig.tight_layout()
         savefig(fig, fname)
 
@@ -354,7 +442,9 @@ def main():
     print("=" * 100)
     yolo11x_df = pd.read_csv(YOLO11X_FP32_CSV)
     x11_self = self_R(yolo11x_df)
-    x11_stats = x11_self.groupby("distance_cm").agg(R_mean=("R", "mean"), R_std=("R", "std")).reset_index()
+    x11_stats = x11_self.groupby("distance_cm").agg(
+        R_mean=("R", "mean"), R_std=("R", "std"), R_p95=("R", lambda s: s.quantile(ADAPTIVE_PCTL / 100))
+    ).reset_index()
     # separate copy WITH yolo11x's own shoulder_mid -- needed only for the 3b
     # adaptive-threshold-only comparison below, which (per the original
     # adaptive_threshold_1_3.py) calibrates its threshold curve on yolo11x's
@@ -363,7 +453,8 @@ def main():
     # (that's the axis actually available at deployment for looking up a v8n
     # detection's own correction).
     x11_stats_own_axis = x11_self.groupby("distance_cm").agg(
-        shoulder_mid=("shoulder_px", "mean"), R_mean=("R", "mean"), R_std=("R", "std")
+        shoulder_mid=("shoulder_px", "mean"), R_mean=("R", "mean"), R_std=("R", "std"),
+        R_p95=("R", lambda s: s.quantile(ADAPTIVE_PCTL / 100)),
     ).reset_index()
 
     mixed_self = self_R(dfs["modelopt_int8_excl_cv4"])
@@ -379,43 +470,71 @@ def main():
         return interp(shoulder_px, "R_mean_x11") + (R_raw - interp(shoulder_px, "R_mean_mixed")) * (
             interp(shoulder_px, "R_std_x11") / interp(shoulder_px, "R_std_mixed"))
 
+    # miss_raw stays fixed-0.4 (matches beta_S6.py's actual deployed logic --
+    # the "old system" baseline, independent of yolo11x entirely). miss_corrected
+    # now compares against the SAME per-bin adaptive threshold (x11_stats'
+    # R_p95) that R_corrected itself is rescaled onto, instead of the old fixed
+    # 0.4 -- this was an inconsistency versus Table I/Fig 1-5-7 and Fig 1-6-2,
+    # which already paired corrected-R against the adaptive threshold.
+    x11_thr_by_dist = dict(zip(x11_stats["distance_cm"], x11_stats["R_p95"]))
     corr_det = {}
     for v in CORRECTION_VARIANTS:
         d = detections[v].copy()
         d["R_corrected"] = correct_R(d["shoulder_px"].values, d["R"].values)
         d["miss_raw"] = d["R"] >= 0.4
-        d["miss_corrected"] = d["R_corrected"] >= 0.4
+        d["threshold"] = d["distance_cm"].map(x11_thr_by_dist)
+        d["miss_corrected"] = d["R_corrected"] >= d["threshold"]
         corr_det[v] = d
 
     print("\n-- miss rate (R raw vs fixed 0.4) by distance --")
     print(pd.DataFrame({LABELS[v]: corr_det[v].groupby("distance_cm")["miss_raw"].mean() for v in CORRECTION_VARIANTS}).round(3).to_string())
-    print("\n-- miss rate (R corrected vs fixed 0.4) by distance --")
+    print("\n-- miss rate (R corrected vs adaptive threshold) by distance --")
     print(pd.DataFrame({LABELS[v]: corr_det[v].groupby("distance_cm")["miss_corrected"].mean() for v in CORRECTION_VARIANTS}).round(3).to_string())
 
     # only 2 variants here -- role (raw/corrected) already carries marker
     # shape + linestyle, so give the 2nd variant hollow markers as a 3rd,
     # independent grayscale-safe cue on top of color.
     fill = {"fp16": None, "modelopt_int8_excl_cv4": "white"}
-    fig, ax = plt.subplots(figsize=(10, 6.5))
+    fig, ax = plt.subplots(figsize=(15, 10.0))
+    # Embeds at 3.4in single-column width; fonts are back-calculated so they
+    # land at the intended final size once LaTeX shrinks it down (see Fig 5's
+    # _SHRINK5 in this file for the same pattern).
+    _SHRINK10 = 3.4 / 9.5
+    # Separate ratio for axis label/ticks only, based on the actual current
+    # native width (14.87in, measured after widening figsize) -- _SHRINK10
+    # itself stays untouched so the legend's fontsize (7/_SHRINK10) doesn't
+    # change.
+    _SHRINK10_OTHER = 3.4 / 14.87
     for v in ["fp16", "modelopt_int8_excl_cv4"]:
         d = corr_det[v]
         agg_raw = d.groupby("distance_cm")["R"].mean()
         agg_corr = d.groupby("distance_cm")["R_corrected"].agg(["mean", "std"])
-        ax.plot(agg_raw.index, agg_raw.values, color=VARIANT_COLOR[v], linestyle="--", marker="s", markersize=6,
-                markerfacecolor=fill[v], label=f"{LABELS[v]} – raw")
+        ax.plot(agg_raw.index, agg_raw.values, color=VARIANT_COLOR[v], linestyle="--", marker="s", markersize=18,
+                markerfacecolor=fill[v], label=f"{LABELS_SHORT[v]}, raw")
         ax.errorbar(agg_corr.index, agg_corr["mean"], yerr=agg_corr["std"], color=VARIANT_COLOR[v],
-                    linestyle="-", marker="o", markersize=6, markerfacecolor=fill[v], capsize=3, label=f"{LABELS[v]} – corrected")
-    ax.plot(x11_stats["distance_cm"], x11_stats["R_mean"], color="tab:blue", linestyle="-", linewidth=2, alpha=0.5, label="yolo11x-pose FP32 target")
-    threshold_curve = x11_stats["R_mean"] + K * x11_stats["R_std"]
-    ax.plot(x11_stats["distance_cm"], threshold_curve, color="black", linestyle=":", linewidth=1.5, label=f"threshold (v11x mean+{K}×std)")
-    ax.set_xlabel("distance (cm)")
-    ax.set_ylabel("R (wrist_dist / shoulder_dist)")
+                    linestyle="-", marker="o", markersize=18, markerfacecolor=fill[v], capsize=3, label=f"{LABELS_SHORT[v]}, corrected")
+    ax.plot(x11_stats["distance_cm"], x11_stats["R_mean"], color="tab:blue", linestyle="-", linewidth=2, alpha=0.5, label="11x fp32")
+    threshold_curve = x11_stats["R_p95"]
+    ax.plot(x11_stats["distance_cm"], threshold_curve, color="black", linestyle=":", linewidth=1.5, label="threshold")
+    ax.set_xlabel("distance (cm)", fontsize=9 / _SHRINK10_OTHER)
+    ax.set_ylabel("R (wrist_dist / shoulder_dist)", fontsize=9 / _SHRINK10_OTHER)
+    ax.tick_params(labelsize=8 / _SHRINK10_OTHER)
     # extra headroom above the threshold curve so the legend has clear space
     # instead of sitting on top of it
     ymin, ymax = ax.get_ylim()
     ax.set_ylim(ymin, ymax + 0.22 * (ymax - ymin))
-    ax.legend(fontsize=11, loc="upper left", labelspacing=0.8, handlelength=2.5, handletextpad=0.8, borderpad=0.8)
+    # tight_layout() runs before the legend exists so it lays out the axes
+    # at full declared-canvas size instead of shrinking it to make room for
+    # the legend.
     fig.tight_layout()
+    # 2 rows x 3 cols, row-major: [FP16 raw/corrected/target] over
+    # [INT8-mix16 raw/corrected/threshold].
+    handles, labels = ax.get_legend_handles_labels()
+    order = [0, 1, 4, 5, 2, 3]
+    handles = [handles[i] for i in order]
+    labels = [labels[i] for i in order]
+    ax.legend(handles, labels, fontsize=10 / _SHRINK10, loc="upper left", ncol=3,
+              labelspacing=0.4, columnspacing=0.8, handlelength=2.5, handletextpad=0.4, borderpad=0.8)
     savefig(fig, "1-3-6_R_value_raw_vs_corrected")
 
     fig, ax = plt.subplots(figsize=(10, 6.5))
@@ -425,7 +544,7 @@ def main():
         ax.plot(agg.index, agg["miss_raw"], color=VARIANT_COLOR[v], linestyle="--", marker="s", markersize=6,
                 markerfacecolor=fill[v], label=f"{LABELS[v]} – raw R, fixed 0.4")
         ax.plot(agg.index, agg["miss_corr"], color=VARIANT_COLOR[v], linestyle="-", marker="o", markersize=6,
-                markerfacecolor=fill[v], label=f"{LABELS[v]} – corrected R, fixed 0.4")
+                markerfacecolor=fill[v], label=f"{LABELS[v]} – corrected R, adaptive threshold")
     ax.set_xlabel("distance (cm)")
     ax.set_ylabel("miss rate (fraction of individual person-detections missed)")
     ax.legend(fontsize=11, loc="upper left", ncol=2, labelspacing=0.8, handlelength=2.5, handletextpad=0.8, borderpad=0.8)
@@ -439,7 +558,7 @@ def main():
     print("3b. Adaptive-threshold-ONLY comparison (no R rescale) -- backs the 結論 “只換門檻” sentence")
     print("=" * 100)
     bin_stats = x11_stats_own_axis.sort_values("shoulder_mid").copy()
-    bin_stats["threshold"] = bin_stats["R_mean"] + K * bin_stats["R_std"]
+    bin_stats["threshold"] = bin_stats["R_p95"]
 
     def adaptive_threshold(shoulder_px):
         return np.interp(shoulder_px, bin_stats["shoulder_mid"], bin_stats["threshold"])

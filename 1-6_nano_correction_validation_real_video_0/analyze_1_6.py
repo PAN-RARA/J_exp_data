@@ -58,7 +58,11 @@ REAL_DIR = ROOT / "exported_charts" / "1-6" / "real_video_results_filtered"
 SIM_DIR = ROOT / "exported_charts" / "1-6" / "real_video_results_simulated_filtered"
 YOLO11X_REAL_VIDEO_CSV = ROOT / "yolo11x-pose.real_video.csv"
 CHARTS_DIR = ROOT / "charts"
-K = 1.645
+# Empirical 95th-percentile threshold, not mean+1.645*std -- see analyze_1_3.py's
+# ADAPTIVE_PCTL comment: Shapiro-Wilk rejects normality for yolo11x-pose's own
+# R distribution at every distance bin, and the parametric formula under-
+# estimates the true 95th percentile (systematically too strict).
+ADAPTIVE_PCTL = 95
 OVERLAP_DISTANCES = [250, 300, 350, 400]
 SIM_DISTANCES = [275, 325, 375, 425, 450, 475, 500, 525, 550]
 ALL_DISTANCES = sorted(OVERLAP_DISTANCES + SIM_DISTANCES)
@@ -66,7 +70,7 @@ ALL_DISTANCES = sorted(OVERLAP_DISTANCES + SIM_DISTANCES)
 VARIANTS = ["fp32", "fp16", "int8", "modelopt_int8", "modelopt_int8_excl_cv4", "modelopt_int8_excl_cv4_fp32"]
 CHART_VARIANTS = ["fp32", "fp16", "modelopt_int8_excl_cv4"]
 CHART_COLOR = {"fp32": "#555555", "fp16": "#e07b39", "modelopt_int8_excl_cv4": "#4a9c6d"}
-CHART_LABEL_SHORT = {"fp32": "FP32", "fp16": "FP16", "modelopt_int8_excl_cv4": "INT8(mixed)"}
+CHART_LABEL_SHORT = {"fp32": "FP32", "fp16": "FP16", "modelopt_int8_excl_cv4": "INT8-mix"}
 # IEEE print figures fall back to grayscale -- each variant gets its own
 # (raw_marker, corrected_marker) pair so all 3 stay shape-distinguishable.
 CHART_MARKERS = {"fp32": ("o", "^"), "fp16": ("s", "D"), "modelopt_int8_excl_cv4": ("P", "X")}
@@ -84,7 +88,9 @@ def r_self(df):
 
 def curve_from_self(df):
     r = r_self(df)
-    return r.groupby("distance_cm").agg(R_mean=("R", "mean"), R_std=("R", "std")).reset_index()
+    return r.groupby("distance_cm").agg(
+        R_mean=("R", "mean"), R_std=("R", "std"), R_p95=("R", lambda s: s.quantile(ADAPTIVE_PCTL / 100))
+    ).reset_index()
 
 
 def top_n_filter(df):
@@ -118,7 +124,7 @@ def main():
     x11_raw = pd.read_csv(YOLO11X_REAL_VIDEO_CSV)
     x11_filtered = top_n_filter(x11_raw)
     x11_curve = curve_from_self(x11_filtered)
-    x11_curve["threshold"] = x11_curve["R_mean"] + K * x11_curve["R_std"]
+    x11_curve["threshold"] = x11_curve["R_p95"]
     x11_mean = dict(zip(x11_curve["distance_cm"], x11_curve["R_mean"]))
     x11_std = dict(zip(x11_curve["distance_cm"], x11_curve["R_std"]))
     x11_thr = dict(zip(x11_curve["distance_cm"], x11_curve["threshold"]))
@@ -205,37 +211,70 @@ def main():
     # ============================================================
     # Fig 1-6-2: raw vs corrected R, vs REAL-video yolo11x target/threshold
     # ============================================================
-    fig, ax = plt.subplots(figsize=(11, 6.2))
-    h_target = ax.plot(x11_curve["distance_cm"], x11_curve["R_mean"], "k-", linewidth=1.3, label="yolo11x - target")[0]
-    h_thresh = ax.plot(x11_curve["distance_cm"], x11_curve["threshold"], "k:", linewidth=1.5, label="yolo11x - threshold")[0]
-    handles_for_legend = {("yolo11x", "target"): (h_target, "yolo11x - target"),
-                          ("yolo11x", "threshold"): (h_thresh, "yolo11x - threshold")}
-    for variant in CHART_VARIANTS:
+    # Mirrors Fig 1-3-6's (analyze_1_3.py) drawing parameters exactly, since
+    # these are twin figures (raw vs corrected R vs distance, relative to a
+    # yolo11x target/threshold) -- same figsize, marker/fill/color scheme,
+    # capsize, dynamic legend headroom, and legend structure/styling, per
+    # user request to keep the two visually consistent.
+    fig, ax = plt.subplots(figsize=(15, 10.0))
+    # Embeds at 3.4in single-column width; fonts are back-calculated so they
+    # land at the intended final size once LaTeX shrinks it down (see Fig 5's
+    # _SHRINK5 in analyze_1_3.py for the same pattern). Placeholder ratios
+    # copied from Fig 1-3-6's starting point -- re-measure against this
+    # figure's own rendered native size via pdfinfo and correct if needed.
+    _SHRINK12 = 3.4 / 9.5
+    _SHRINK12_OTHER = 3.4 / 14.87
+    h_target = ax.plot(x11_curve["distance_cm"], x11_curve["R_mean"], color="tab:blue", linestyle="-",
+                        linewidth=2, alpha=0.5, label="11x target")[0]
+    h_thresh = ax.plot(x11_curve["distance_cm"], x11_curve["threshold"], color="black", linestyle=":",
+                        linewidth=1.5, label="11x threshold")[0]
+    handles_for_legend = {("yolo11x", "target"): (h_target, "11x target"),
+                          ("yolo11x", "threshold"): (h_thresh, "11x threshold")}
+    # FP32 dropped from this figure (tracks FP16 closely, as established
+    # elsewhere -- redundant here) and raw's error bars dropped too, both per
+    # user request to cut clutter -- 6 lines total (target, threshold,
+    # fp16/mixed raw, fp16/mixed corrected) instead of 8. Marker shape now
+    # carries raw/corrected role (square/circle, matching Fig 1-3-6) instead
+    # of variant identity; fill carries variant identity instead of role,
+    # also matching Fig 1-3-6.
+    FIG2_VARIANTS = ["fp16", "modelopt_int8_excl_cv4"]
+    fill = {"fp16": None, "modelopt_int8_excl_cv4": "white"}
+    for variant in FIG2_VARIANTS:
         sub = rvalue_df[rvalue_df["variant"] == variant].sort_values("distance_cm")
         color = CHART_COLOR[variant]
-        shape = CHART_SHAPE[variant]
         label_raw = f"{CHART_LABEL_SHORT[variant]} - raw"
-        label_corr = f"{CHART_LABEL_SHORT[variant]} - corrected"
-        h1 = ax.errorbar(sub["distance_cm"], sub["R_raw_mean"], yerr=sub["R_raw_std"], color=color,
-                    linestyle="--", marker=shape, markersize=7, capsize=2, label=label_raw)
+        label_corr = f"{CHART_LABEL_SHORT[variant]} - corr"
+        h1, = ax.plot(sub["distance_cm"], sub["R_raw_mean"], color=color, linestyle="--", marker="s",
+                    markersize=18, markerfacecolor=fill[variant], label=label_raw)
         h2 = ax.errorbar(sub["distance_cm"], sub["R_corrected_mean"], yerr=sub["R_corrected_std"], color=color,
-                    linestyle="-", marker=shape, markersize=7, markerfacecolor="white", capsize=2, label=label_corr)
+                    linestyle="-", marker="o", markersize=18, markerfacecolor=fill[variant], capsize=3, label=label_corr)
         handles_for_legend[(variant, "raw")] = (h1, label_raw)
         handles_for_legend[(variant, "corrected")] = (h2, label_corr)
     ax.axvline(400, color="gray", linestyle=":", linewidth=1)
-    y_top = ax.get_ylim()[1]
-    ax.text(405, y_top - 0.10 * (y_top - ax.get_ylim()[0]), "real data | simulated ->", fontsize=13, color="gray")
-    ax.set_xlabel("distance (cm)")
-    ax.set_ylabel("R value (wrist_dist / shoulder_dist)")
-    # 4 rows x 2 cols: 3 variant (raw, corrected) pairs, then (target,
-    # threshold) -- column-major fill with ncol=2 puts the first half of
-    # the handle list in column 1 and the second half in column 2.
-    legend_order = ([(v, "raw") for v in CHART_VARIANTS] + [("yolo11x", "target")] +
-                     [(v, "corrected") for v in CHART_VARIANTS] + [("yolo11x", "threshold")])
+    # "real data | simulated ->" annotation removed -- explained in the
+    # caption instead.
+    ax.set_xlabel("distance (cm)", fontsize=9 / _SHRINK12_OTHER)
+    ax.set_ylabel("R (wrist_dist / shoulder_dist)", fontsize=9 / _SHRINK12_OTHER)
+    ax.tick_params(axis="both", labelsize=8 / _SHRINK12_OTHER)
+    # extra headroom above the data so the legend has clear space, same
+    # dynamic approach (and ratio) as Fig 1-3-6, instead of a hardcoded
+    # top= value.
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax + 0.22 * (ymax - ymin))
+    fig.tight_layout()
+    # matplotlib fills a legend column-major (top-to-bottom within a column,
+    # then next column), not row-major -- empirically confirmed by rendering
+    # -- so to get the visual row-major layout [fp16 raw/corrected/target]
+    # over [mixed raw/corrected/threshold] (same as Fig 1-3-6), the input
+    # list must interleave by column: col0=(fp16 raw, mixed raw), col1=(fp16
+    # corrected, mixed corrected), col2=(target, threshold).
+    legend_order = [("fp16", "raw"), ("modelopt_int8_excl_cv4", "raw"),
+                     ("fp16", "corrected"), ("modelopt_int8_excl_cv4", "corrected"),
+                     ("yolo11x", "target"), ("yolo11x", "threshold")]
     handles = [handles_for_legend[k][0] for k in legend_order]
     labels = [handles_for_legend[k][1] for k in legend_order]
-    ax.legend(handles, labels, loc="upper left", ncol=2, fontsize=12)
-    fig.tight_layout()
+    ax.legend(handles, labels, fontsize=10 / _SHRINK12, loc="upper left", ncol=3,
+              labelspacing=0.4, columnspacing=0.8, handlelength=2.5, handletextpad=0.4, borderpad=0.8)
     savefig(fig, "1-6-2_R_value_raw_vs_corrected_vs_distance")
 
     print("\nDONE")

@@ -10,3 +10,20 @@
 
 # ad-hoc debug crops made while reviewing chart output
 **/charts/zoom_*.png
+
+# raw simulated-frame PNGs for the v2 randomized-multi-source real-video
+# pipeline -- 3.7GB, way past this repo's established per-archive size
+# convention (everything else is <100MB .7z). Regenerable deterministically
+# from generate_randomized_simulated_frames.py + frame_manifest.csv + the
+# original Test_21/*.mp4 source videos (random.seed(42)/np.random.seed(42)).
+# The actual results this archive produced (raw_detections_simulated/,
+# v2_fully_consistent_results.csv, the v2 figure) ARE committed.
+1-6_nano_correction_validation_real_video_0/v2_randomized_simulated/real_video_frames_simulated_v2.tar.gz
+
+# python bytecode cache
+__pycache__/
+
+# stray compile/log artifacts left in experiment folders (not repo-level
+# build output, just leftover debug runs)
+texput.log
+compile_check.txt

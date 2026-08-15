@@ -76,6 +76,9 @@ PRECISION_COLOR = {"32": "#555555", "16": "#4C72B0", "8": "#C44E52", "mix": "#55
 # own marker shape so the 4 series stay distinguishable by shape alone.
 PRECISION_MARKER = {"32": "o", "16": "s", "8": "^", "mix": "D"}
 PRECISION_LINESTYLE = {"32": "-", "16": "--", "8": "-.", "mix": ":"}
+# draw-order (z-order) only -- front to back: int8 > fp32 > fp16 > mixed.
+# Kept separate from PRECISION_ORDER so the legend order is unaffected.
+PRECISION_ZORDER = {"8": 5, "32": 4, "16": 3, "mix": 2}
 REAL_TRACK_FRAME_FRACTION = 0.90
 
 FALSE_TRIGGER_SCENARIOS = ["1s", "2s", "3hd", "3au"]
@@ -190,7 +193,16 @@ def make_distance_degradation_chart():
     # reliance on color); error bars are thin/capless/low-alpha so they don't
     # visually collide at the 4 sparse ticks -- they're background context,
     # not something that itself needs to be individually distinguishable.
-    fig, ax = plt.subplots(figsize=(9, 4.8))
+    fig, ax = plt.subplots(figsize=(11, 6.0))
+    # Embeds at 3.4in single-column width; fonts are back-calculated so they
+    # land at the intended final size once LaTeX shrinks it down (see Fig 5's
+    # _SHRINK5 in analyze_1_3.py for the same pattern).
+    _SHRINK9 = 3.4 / 10.90
+    # Only 4 distinct x-values (250/300/350/400); 0.15 margin pulled the
+    # first/last points too far in from the axes edges, so tightened to 0.06.
+    # y tightened too -- default ~5% autoscale margin plus the headroom added
+    # below was leaving too much dead space above/below the data.
+    ax.margins(x=0.06, y=0.06)
     for p in PRECISION_ORDER:
         sub = df[df["precision"] == p]
         agg = sub.groupby("distance_cm")["r_mean"].agg(["mean", "std"])
@@ -198,12 +210,26 @@ def make_distance_degradation_chart():
         ax.errorbar(agg.index, agg["mean"], yerr=agg["std"], fmt="none",
                     ecolor=PRECISION_COLOR[p], elinewidth=1, capsize=3, capthick=1, alpha=0.35, zorder=1)
         ax.plot(agg.index, agg["mean"], color=PRECISION_COLOR[p], linestyle=PRECISION_LINESTYLE[p],
-                marker=PRECISION_MARKER[p], markersize=6, linewidth=2.2, zorder=2, label=PRECISION_LABELS[p])
-    ax.axhline(0.4, color="black", linestyle="--", linewidth=1, alpha=0.6, label="threshold (0.4)")
-    ax.set_xlabel("distance (cm)")
-    ax.set_ylabel("R (wrist_dist / shoulder_dist)")
+                marker=PRECISION_MARKER[p], markersize=14, linewidth=2.2, zorder=PRECISION_ZORDER[p], label=PRECISION_LABELS[p])
+    # Not labeled in the legend -- explained in the caption instead, one less
+    # entry to fit alongside the 4 precision levels.
+    ax.axhline(0.4, color="black", linestyle="--", linewidth=1, alpha=0.6)
+    # Headroom above the threshold line for the legend -- just enough to
+    # clear the tallest error bar (legacy INT8 at x=400), not more, now that
+    # margins() above handles the rest of the spacing.
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax + 0.08)
+    ax.set_ylim(top=0.48)
+    ax.set_xlabel("distance (cm)", fontsize=9 / _SHRINK9)
+    ax.set_ylabel("R (wrist_dist / shoulder_dist)", fontsize=9 / _SHRINK9)
     ax.set_xticks(CHART_DISTANCE_CM)
-    ax.legend(fontsize=11, loc="upper left")
+    ax.tick_params(labelsize=8 / _SHRINK9)
+    # 2x2 grid now that "threshold" moved out of the legend (4 precision
+    # levels left) -- plenty of headroom here (only 4 sparse x-ticks, no
+    # other in-plot text), so the legend can stay at a generous,
+    # body-text-adjacent size.
+    ax.legend(fontsize=8 / _SHRINK9, loc="upper left", ncol=2,
+              columnspacing=1.0, handletextpad=0.5, handlelength=1.8, labelspacing=0.4)
     fig.tight_layout()
     savefig(fig, "1-1-1_r_value_vs_distance")
 
