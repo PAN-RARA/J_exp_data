@@ -69,7 +69,7 @@ import matplotlib.pyplot as plt
 
 DATA_DIR = Path(__file__).parent / "1-1_csv"
 CHARTS_DIR = Path(__file__).parent / "charts"
-PRECISION_LABELS = {"32": "FP32", "16": "FP16", "8": "legacy INT8", "mix": "ModelOpt mixed"}
+PRECISION_LABELS = {"32": "FP32", "16": "FP16", "8": "legacy INT8", "mix": "ModelOpt mixed INT8"}
 PRECISION_ORDER = ["32", "16", "8", "mix"]
 PRECISION_COLOR = {"32": "#555555", "16": "#4C72B0", "8": "#C44E52", "mix": "#55A868"}
 # IEEE print figures fall back to grayscale -- pair each precision with its

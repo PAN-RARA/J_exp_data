@@ -20,6 +20,14 @@
 # v2_fully_consistent_results.csv, the v2 figure) ARE committed.
 1-6_nano_correction_validation_real_video_0/v2_randomized_simulated/real_video_frames_simulated_v2.tar.gz
 
+# same reasoning for the v3 real-calibration pipeline's raw frame archive
+# (3.1GB) -- regenerable from generate_calib_eval_split_frames.py +
+# frame_manifest.csv + the original Test_21/*.mp4 source videos
+# (random.seed(7)/np.random.seed(7)). Deployed-variant + reference results
+# ARE committed (results/).
+1-6_nano_correction_validation_real_video_0/v3_real_calibration/frames_calib_eval_split.tar.gz
+1-6_nano_correction_validation_real_video_0/v3_real_calibration/frames/
+
 # python bytecode cache
 __pycache__/
 
